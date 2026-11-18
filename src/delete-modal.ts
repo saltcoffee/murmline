@@ -26,7 +26,7 @@ export class DeleteModal extends Modal {
     this.titleEl.setText(t.confirm);
     const date = createdAt(this.post.id);
     this.contentEl.createEl('small', { text: dayLabel(date, new Date(), this.lang) + ' · ' + localTime(date) });
-    this.preview = this.contentEl.createEl('p', { cls: 'murmur-preview', text: this.post.text });
+    this.preview = this.contentEl.createEl('p', { cls: 'murmline-preview', text: this.post.text });
     this.status = this.contentEl.createDiv({ attr: { role: 'status' } });
     const buttons = this.contentEl.createDiv({ cls: 'modal-button-container' });
     this.cancel = buttons.createEl('button', { text: t.cancel });

@@ -6,7 +6,7 @@ import { dayKey, draft, inspect, LIMIT, pathId, Post, postPath, ROOT } from './p
 import { PostStore } from './post-store';
 import { TimelineList } from './timeline-list';
 
-export const VIEW = 'murmur-timeline';
+export const VIEW = 'murmline-timeline';
 export class TimelineView extends ItemView {
   private readonly feed: Feed;
   private list!: TimelineList;
@@ -42,7 +42,7 @@ export class TimelineView extends ItemView {
     });
   }
   getViewType() { return VIEW; }
-  getDisplayText() { return 'Murmur'; }
+  getDisplayText() { return 'Murmline'; }
   override getIcon() { return 'feather'; }
 
   override async onOpen() {
@@ -50,16 +50,16 @@ export class TimelineView extends ItemView {
     const { t } = this.lang;
     const root = this.contentEl;
     root.empty();
-    root.addClass('murmur-view');
-    const column = root.createDiv({ cls: 'murmur-column' });
-    const composer = column.createDiv({ cls: 'murmur-composer' });
-    const label = composer.createEl('label', { cls: 'murmur-field' });
-    label.createSpan({ cls: 'murmur-sr-only', text: t.input });
+    root.addClass('murmline-view');
+    const column = root.createDiv({ cls: 'murmline-column' });
+    const composer = column.createDiv({ cls: 'murmline-composer' });
+    const label = composer.createEl('label', { cls: 'murmline-field' });
+    label.createSpan({ cls: 'murmline-sr-only', text: t.input });
     this.input = label.createEl('textarea', { attr: { placeholder: t.placeholder, rows: '3' } });
-    const controls = composer.createDiv({ cls: 'murmur-controls' });
-    this.counter = controls.createEl('span', { cls: 'murmur-count' });
+    const controls = composer.createDiv({ cls: 'murmline-controls' });
+    this.counter = controls.createEl('span', { cls: 'murmline-count' });
     this.send = controls.createEl('button', { cls: 'mod-cta' });
-    this.feedback = composer.createDiv({ attr: { role: 'status' }, cls: 'murmur-feedback' });
+    this.feedback = composer.createDiv({ attr: { role: 'status' }, cls: 'murmline-feedback' });
     this.input.oninput = () => {
       this.pending = undefined;
       this.feedback.empty();
@@ -71,8 +71,8 @@ export class TimelineView extends ItemView {
     this.updateComposer();
     this.list = new TimelineList(column.createDiv(), root, this.lang,
       (post, button) => this.menu(post, button), id => void this.run(async () => { await this.feed.reload(id); }));
-    this.status = column.createDiv({ cls: 'murmur-status', attr: { role: 'status' } });
-    this.older = column.createEl('button', { cls: 'murmur-older' });
+    this.status = column.createDiv({ cls: 'murmline-status', attr: { role: 'status' } });
+    this.older = column.createEl('button', { cls: 'murmline-older' });
     this.older.hidden = true;
     this.older.onclick = event => this.page(event.detail === 0);
     const win = root.ownerDocument.defaultView!;
@@ -111,7 +111,7 @@ export class TimelineView extends ItemView {
   }
 
   private change(path: string, moved = false) {
-    if (!this.live || !(path === ROOT || /^Murmur\/\d{4}-\d\d$/.test(path) || pathId(path))) return;
+    if (!this.live || !(path === ROOT || /^Murmline\/\d{4}-\d\d$/.test(path) || pathId(path))) return;
     this.dirty.add(path);
     if (!this.queuedChanges) {
       this.queuedChanges = true;
