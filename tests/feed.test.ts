@@ -55,10 +55,10 @@ it('retries enumeration, follows folder moves, and updates a previously empty vi
   await expect(feed.page()).rejects.toThrow();
   await feed.page();
   data.add(id(2));
-  await feed.changed(new Set(['Murmur']));
+  await feed.changed(new Set(['Murmline']));
   expect(feed.rows.has(id(2))).toBe(true);
   data.clear();
-  await feed.changed(new Set(['Murmur']));
+  await feed.changed(new Set(['Murmline']));
   expect(feed.rows.size).toBe(0);
 });
 
@@ -77,7 +77,7 @@ it.each(['folder', 'files'])('paginates a 10,000-post %s import into an open emp
   const { feed, source, data } = fixture(0);
   await feed.page();
   for (let n = 0; n < 10_000; n++) data.add(id(n));
-  const paths = event === 'folder' ? ['Murmur/2026-11'] : [...data].map(postPath);
+  const paths = event === 'folder' ? ['Murmline/2026-11'] : [...data].map(postPath);
   await feed.changed(new Set(paths));
   expect(source.read).toHaveBeenCalledTimes(50);
   expect([...feed.rows.keys()]).toEqual([...data].reverse().slice(0, 50));

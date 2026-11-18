@@ -2,8 +2,8 @@ import { countGraphemes } from 'unicode-segmenter/grapheme';
 import type { Language } from './i18n';
 
 export const LIMIT = 140;
-export const ROOT = 'Murmur';
-export const MARKER = '<!-- murmur:v1 -->';
+export const ROOT = 'Murmline';
+export const MARKER = '<!-- murmline:v1 -->';
 const segmenter = typeof Intl.Segmenter === 'function'
   ? new Intl.Segmenter(undefined, { granularity: 'grapheme' }) : undefined;
 

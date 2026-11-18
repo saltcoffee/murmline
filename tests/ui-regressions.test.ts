@@ -94,7 +94,7 @@ async function timeline(size: number) {
   const root = view.contentEl as unknown as TestElement;
   const readyKey = keys.at(-1)!;
   await vi.waitFor(() => expect(root.find(el => el.dataset.id === readyKey)).toBeDefined());
-  return { view, root, store, keys, older: root.find(el => el.cls === 'murmur-older')! };
+  return { view, root, store, keys, older: root.find(el => el.cls === 'murmline-older')! };
 }
 
 it.each([51, 101])('keeps keyboard focus through pagination with %i posts', async size => {
@@ -110,7 +110,7 @@ it.each([51, 101])('keeps keyboard focus through pagination with %i posts', asyn
   const next = keys[size - 51]!;
   gate.resolve(next);
   await vi.waitFor(() => {
-    const action = root.find(el => el.dataset.id === next)?.find(el => el.cls.includes('murmur-action'));
+    const action = root.find(el => el.dataset.id === next)?.find(el => el.cls.includes('murmline-action'));
     expect(action).toBeDefined();
     expect(root.ownerDocument.activeElement).toBe(action);
   });
@@ -134,7 +134,7 @@ it('preserves focus moved elsewhere during a keyboard page read', async () => {
 it('refreshes the visible time and accessible action name on the same cached row', async () => {
   vi.stubEnv('TZ', 'UTC');
   const {view, root} = await timeline(1);
-  const action = root.find(el => el.cls.includes('murmur-action'))!;
+  const action = root.find(el => el.cls.includes('murmline-action'))!;
   for (const [zone, time] of [['Asia/Shanghai', '00:05'], ['UTC', '16:05']] as const) {
     vi.stubEnv('TZ', zone);
     view['checkClock']();

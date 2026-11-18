@@ -48,11 +48,20 @@ describe('vault boundary', () => {
     expect(store.list()).toHaveLength(2);
   });
 
+  it('reads an original Murmur post moved into the Murmline folder', async () => {
+    const { store, contents } = fixture();
+    const post = draft('first thought');
+    await store.publish(post);
+    contents.set(postPath(post.id), '<!-- murmur:v1 -->\r\nfirst thought');
+    expect(store.list()).toEqual([post.id]);
+    expect(await store.read(post.id)).toBe(post.text);
+  });
+
   it('keeps occupied directories and conflicting contents intact', async () => {
     const { store, files, contents } = fixture();
     const post = draft('one');
-    files.set('Murmur', new TFile('Murmur'));
-    await expect(store.publish(post)).rejects.toMatchObject({ reason: 'occupied', path: 'Murmur' });
+    files.set('Murmline', new TFile('Murmline'));
+    await expect(store.publish(post)).rejects.toMatchObject({ reason: 'occupied', path: 'Murmline' });
     files.clear();
     await store.publish(post);
     await expect(store.publish({ ...post, text: 'two' })).rejects.toMatchObject({ reason: 'occupied' });
@@ -66,7 +75,7 @@ describe('vault boundary', () => {
     const target = store.file(post.id)!;
     const path = postPath(post.id);
     const remove = (current = () => true) => store.remove(post, target, current, () => {});
-    for (const other of ['ordinary note', '<!-- murmur:v2 -->\nnew']) {
+    for (const other of ['ordinary note', '<!-- murmline:v2 -->\nnew']) {
       contents.set(path, other);
       expect(await remove()).toBe('gone');
     }

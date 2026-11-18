@@ -3,7 +3,7 @@ import { language } from './i18n';
 import { PostStore } from './post-store';
 import { TimelineView, VIEW } from './timeline-view';
 
-export default class Murmur extends Plugin {
+export default class Murmline extends Plugin {
   private opening?: Promise<void>;
 
   override onload() {

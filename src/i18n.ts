@@ -6,8 +6,8 @@ const en = {
   loadError: 'Could not load thoughts.', readError: 'Could not read this thought.',
   saveError: 'Could not post. Please try again.', deleteError: 'Could not delete. Please try again.',
   changed: 'This thought has changed. Review it before deleting.',
-  gone: 'This thought was moved, removed, or is no longer a Murmur post.',
-  today: 'Today', yesterday: 'Yesterday', openError: 'Could not open Murmur.',
+  gone: 'This thought was moved, removed, or is no longer a Murmline post.',
+  today: 'Today', yesterday: 'Yesterday', openError: 'Could not open Murmline.',
   invalid: 'Invalid thought file', occupied: 'Storage path is in use',
   over: (n: number) => n + (n === 1 ? ' character over the limit' : ' characters over the limit'),
 };
@@ -20,8 +20,8 @@ const zh: Messages = {
   loadError: '读取失败。', readError: '这条记录读取失败。',
   saveError: '发布失败，请重试。', deleteError: '删除失败，请重试。',
   changed: '这条想法已更改，请查看新正文后再确认。',
-  gone: '记录已移动、已移除或已不属于 Murmur。',
-  today: '今天', yesterday: '昨天', openError: '无法打开 Murmur。',
+  gone: '记录已移动、已移除或已不属于 Murmline。',
+  today: '今天', yesterday: '昨天', openError: '无法打开 Murmline。',
   invalid: '记录文件无效', occupied: '存储路径已被占用',
   over: n => '已超出 ' + n + ' 字',
 };

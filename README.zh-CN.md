@@ -1,4 +1,4 @@
-# Murmur
+# Murmline
 
 [English](README.md) · [更新记录](CHANGELOG.md)
 
@@ -8,13 +8,15 @@
 
 支持桌面端和移动端 Obsidian，最低版本为 **1.8.7**。
 
-1. 打开 [GitHub Releases](https://github.com/saltcoffee/murmur/releases)，从最新版本的附件中下载 `main.js`、`manifest.json` 和 `styles.css`。
-2. 在仓库中创建 `.obsidian/plugins/murmur/` 文件夹，把这三个文件直接放进去。
-3. 重启 Obsidian，打开 **设置 → 第三方插件**，按提示允许使用第三方插件，然后启用 **Murmur**。
+1. 打开 [GitHub Releases](https://github.com/saltcoffee/murmline/releases)，从最新版本的附件中下载 `main.js`、`manifest.json` 和 `styles.css`。
+2. 在仓库中创建 `.obsidian/plugins/murmline/` 文件夹，把这三个文件直接放进去。
+3. 重启 Obsidian，打开 **设置 → 第三方插件**，按提示允许使用第三方插件，然后启用 **Murmline**。
+
+如果你用过旧版 Murmur，请先停用旧插件，并在首次发布前将仓库中的 `Murmur/` 文件夹改名为 `Murmline/`。原有想法会出现在时间线中。
 
 ## 记录想法
 
-点击侧栏的羽毛图标，或在命令面板中选择 **Murmur: 记录想法**。想更快打开输入框，可以在 **设置 → 快捷键** 中给这条命令绑定快捷键。
+点击侧栏的羽毛图标，或在命令面板中选择 **Murmline: 记录想法**。想更快打开输入框，可以在 **设置 → 快捷键** 中给这条命令绑定快捷键。
 
 写好后点 **发布**。Mac 可按 **⌘ Enter**，Windows 和 Linux 可按 **Ctrl Enter**，单按 Enter 换行。空格和换行都计入 140 字，像 👨‍👩‍👧‍👦 这样的组合表情计为一个字。粘贴的内容超长时可以直接删改。
 
@@ -26,13 +28,13 @@
 
 ## 保存位置与语言
 
-每条想法都是仓库 `Murmur/` 文件夹里的一份 Markdown 文件。停用插件后仍能打开阅读。断网也能发布；仓库已有的同步、备份和共享设置同样适用于这些文件。
+每条想法都是仓库 `Murmline/` 文件夹里的一份 Markdown 文件。停用插件后仍能打开阅读。断网也能发布；仓库已有的同步、备份和共享设置同样适用于这些文件。
 
 界面跟随 Obsidian 的语言设置。选择中文时显示简体中文，其他语言设置显示英文。
 
 ## 打赏支持
 
-如果你喜欢 Murmur，欢迎扫码打赏作者。
+如果你喜欢 Murmline，欢迎扫码打赏作者。
 
 | 微信支付 | 支付宝 |
 | :---: | :---: |

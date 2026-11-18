@@ -51,7 +51,7 @@ export class Feed {
   async changed(paths: Set<string>, active = () => true) {
     if (!this.candidates) return;
     const wasAtEnd = !this.more;
-    const folders = [...paths].filter(path => path === ROOT || /^Murmur\/\d{4}-\d\d$/.test(path));
+    const folders = [...paths].filter(path => path === ROOT || /^Murmline\/\d{4}-\d\d$/.test(path));
     const affected = new Set<string>();
     const added = new Set<string>();
     if (folders.length) {

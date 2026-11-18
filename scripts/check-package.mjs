@@ -6,7 +6,7 @@ const json = async path => JSON.parse(await readFile(path, 'utf8'));
 const [manifest, pkg, lock, versions] = await Promise.all(
   ['manifest.json', 'package.json', 'package-lock.json', 'versions.json'].map(json),
 );
-assert.equal(manifest.id, 'murmur');
+assert.equal(manifest.id, 'murmline');
 assert.equal(manifest.version, pkg.version);
 assert.equal(lock.packages[''].version, pkg.version);
 assert.equal(versions[pkg.version], manifest.minAppVersion);

@@ -14,12 +14,12 @@ export class TimelineList {
     private menu: (post: Post, button: HTMLButtonElement) => void, private retry: (id: string) => void) {}
 
   private create(): Item {
-    const el = this.container.createEl('article', { cls: 'murmur-entry' });
-    const divider = el.createEl('h3', { cls: 'murmur-divider' });
-    const header = el.createDiv({ cls: 'murmur-meta' });
+    const el = this.container.createEl('article', { cls: 'murmline-entry' });
+    const divider = el.createEl('h3', { cls: 'murmline-divider' });
+    const header = el.createDiv({ cls: 'murmline-meta' });
     const time = header.createEl('time');
-    const action = header.createEl('button', { cls: 'clickable-icon murmur-action' });
-    const body = el.createDiv({ cls: 'murmur-body' });
+    const action = header.createEl('button', { cls: 'clickable-icon murmline-action' });
+    const body = el.createDiv({ cls: 'murmline-body' });
     return { el, divider, time, body, action };
   }
 

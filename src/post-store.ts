@@ -37,8 +37,9 @@ export class PostStore {
     const raw = fresh ? await vault.read(file) : await vault.cachedRead(file);
     if (this.file(id) !== file) return null;
     const newline = raw.indexOf('\n');
-    if (raw === MARKER) throw new PostError('invalid', file.path);
-    if (newline < 0 || raw.slice(0, newline).replace(/\r$/, '') !== MARKER) return null;
+    const header = (newline < 0 ? raw : raw.slice(0, newline)).replace(/\r$/, '');
+    if (header !== MARKER && header !== '<!-- murmur:v1 -->') return null;
+    if (newline < 0) throw new PostError('invalid', file.path);
     const body = inspect(raw.slice(newline + 1));
     if (!body.valid) throw new PostError('invalid', file.path);
     return body.text;
