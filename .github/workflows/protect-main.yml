@@ -1,0 +1,56 @@
+name: Protect main
+on:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/protect-main.yml
+      - .github/main-ruleset.json
+  workflow_dispatch:
+permissions:
+  contents: read
+defaults:
+  run:
+    shell: bash
+concurrency:
+  group: protect-main
+  cancel-in-progress: false
+jobs:
+  protect:
+    if: github.ref == 'refs/heads/main' && github.event.deleted != true
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          persist-credentials: false
+      - name: Enable PR-only updates to main
+        env:
+          GH_TOKEN: ${{ secrets.BRANCH_PROTECTION_TOKEN }}
+          READ_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          if [[ -z "$GH_TOKEN" ]]; then
+            export GH_TOKEN="$READ_TOKEN"
+            id=$(gh api --paginate "repos/$GH_REPO/rulesets?includes_parents=false&per_page=100" |
+              jq -r --arg name "$(jq -r .name .github/main-ruleset.json)" '.[] | select(.name == $name and .enforcement == "active") | .id')
+            if [[ -n "$id" ]] && gh api --paginate "repos/$GH_REPO/rules/branches/main?per_page=100" |
+                jq -s -e --argjson id "$id" 'add | map(select(.ruleset_id == $id).type) | contains(["pull_request", "deletion", "non_fast_forward"])' >/dev/null; then
+              exit 0
+            fi
+            echo "::error::Configure the main ruleset in Settings or set BRANCH_PROTECTION_TOKEN (Administration: write), then rerun Protect main."
+            exit 1
+          fi
+          spec=.github/main-ruleset.json
+          api="repos/$GH_REPO/rulesets"
+          id=$(gh api --paginate "$api?includes_parents=false&per_page=100" |
+            jq -r --arg name "$(jq -r .name "$spec")" '.[] | select(.name == $name) | .id')
+          if [[ -z "$id" ]]; then
+            id=$(gh api --method POST "$api" --input "$spec" --jq '.id')
+          fi
+          gh api "$api/$id" | jq -e --slurpfile spec "$spec" '
+            .target == "branch" and .enforcement == "active" and .bypass_actors == [] and
+            .conditions.ref_name == $spec[0].conditions.ref_name and
+            ([.rules[].type] | contains($spec[0].rules | map(.type)))' >/dev/null || {
+              echo "::error::Cannot verify the main ruleset. Check Settings → Rules → Rulesets."
+              exit 1
+            }

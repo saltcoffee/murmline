@@ -1,0 +1,60 @@
+name: Release plugin
+on:
+  push:
+    tags: ['[0-9]*.[0-9]*.[0-9]*']
+permissions:
+  contents: read
+defaults:
+  run:
+    shell: bash
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  release:
+    if: github.event.deleted == false
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    env:
+      RELEASE_TAG: ${{ github.ref_name }}
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@6044e13b5dc448c55e2357c09f80417699197238 # v6
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - name: Check tag and prepare release notes
+        run: |
+          if [[ "$RELEASE_TAG" != "$(jq -r '.version' manifest.json)" ]]; then
+            echo "::error::Tag must exactly match the version in manifest.json"
+            exit 1
+          fi
+          test "$(git rev-parse "refs/tags/$RELEASE_TAG^{commit}")" = "$(git rev-parse HEAD)"
+          node scripts/release-notes.mjs "$RELEASE_TAG" "$RUNNER_TEMP/release-notes.md"
+      - run: npm ci
+      - run: npm run check
+      - name: Publish installation files
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          test "$(gh api "repos/$GH_REPO/git/ref/tags/$RELEASE_TAG" --jq '.object.sha')" = "$(git rev-parse "refs/tags/$RELEASE_TAG")"
+          cp styles.css "$RUNNER_TEMP/style.css"
+          assets=(main.js manifest.json styles.css "$RUNNER_TEMP/style.css")
+          if state=$(gh release view "$RELEASE_TAG" --json isDraft --jq '.isDraft'); then
+            if [[ "$state" == false ]]; then
+              for file in "${assets[@]}"; do
+                gh release download "$RELEASE_TAG" --pattern "${file##*/}" --output - | cmp - "$file"
+              done
+              exit 0
+            fi
+          else
+            gh release create "$RELEASE_TAG" --draft --verify-tag --title "$RELEASE_TAG" --notes-file "$RUNNER_TEMP/release-notes.md"
+          fi
+          gh release upload "$RELEASE_TAG" "${assets[@]}" --clobber
+          gh release edit "$RELEASE_TAG" --notes-file "$RUNNER_TEMP/release-notes.md" --draft=false

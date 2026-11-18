@@ -1,0 +1,29 @@
+{
+  "name": "murmur",
+  "version": "0.1.0",
+  "description": "A private timeline for short thoughts in Obsidian.",
+  "author": "gua",
+  "type": "module",
+  "private": true,
+  "engines": { "node": ">=24 <27" },
+  "scripts": {
+    "dev": "node esbuild.config.mjs",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint src tests scripts *.mjs",
+    "test": "vitest run",
+    "build": "npm run typecheck && node esbuild.config.mjs production",
+    "check": "npm run lint && npm test && npm run build && node scripts/check-package.mjs"
+  },
+  "dependencies": { "unicode-segmenter": "0.14.5" },
+  "devDependencies": {
+    "@eslint/js": "10.0.1",
+    "@types/node": "26.6.5",
+    "esbuild": "0.28.2",
+    "eslint": "10.13.0",
+    "obsidian": "1.8.7",
+    "typescript": "6.0.3",
+    "typescript-eslint": "8.72.0",
+    "vitest": "5.0.5"
+  },
+  "overrides": { "obsidian@1.8.7": { "moment": "2.31.0" } }
+}
