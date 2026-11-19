@@ -3,3 +3,7 @@ node_modules/
 *.tsbuildinfo
 .DS_Store
 /coverage/
+/test-vault/
+/test-results/
+npm-debug.log*
+/docs/
