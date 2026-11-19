@@ -8,6 +8,11 @@ import { TimelineList } from './timeline-list';
 
 export const VIEW = 'murmline-timeline';
 
+// Hidden <label> associations give screen readers a name without using
+// aria-label, which Obsidian would render as a hover tooltip.
+let labelSeq = 0;
+const nextLabelId = (prefix: string) => 'murmline-' + prefix + '-' + (++labelSeq);
+
 type Quoting = { id: string; text: string; missing?: boolean };
 
 export class TimelineView extends ItemView {
@@ -95,8 +100,10 @@ export class TimelineView extends ItemView {
     setIcon(this.quoteBarCancel, 'x');
     this.quoteBarCancel.onclick = () => this.cancelQuote();
 
+    const inputId = nextLabelId('input');
+    composer.createEl('label', { cls: 'murmline-sr-only', text: t.input, attr: { for: inputId } });
     this.input = composer.createEl('textarea', {
-      attr: { 'aria-label': t.input, placeholder: t.placeholder, rows: '3' },
+      attr: { id: inputId, placeholder: t.placeholder, rows: '3' },
     });
     const controls = composer.createDiv({ cls: 'murmline-controls' });
     this.counter = controls.createSpan({ cls: 'murmline-count' });
@@ -114,9 +121,11 @@ export class TimelineView extends ItemView {
 
     this.searchBar = column.createDiv({ cls: 'murmline-search' });
     this.searchBar.hidden = true;
+    const searchId = nextLabelId('search');
+    this.searchBar.createEl('label', { cls: 'murmline-sr-only', text: t.searchPlaceholder, attr: { for: searchId } });
     this.searchInput = this.searchBar.createEl('input', {
       cls: 'murmline-search-input',
-      attr: { role: 'searchbox', inputmode: 'search', placeholder: t.searchPlaceholder, 'aria-label': t.searchPlaceholder },
+      attr: { id: searchId, role: 'searchbox', inputmode: 'search', placeholder: t.searchPlaceholder },
     });
     this.searchClear = this.searchBar.createEl('button', {
       cls: 'clickable-icon murmline-search-clear', attr: { 'aria-label': t.clearSearch, type: 'button' },

@@ -6,9 +6,14 @@ export const ROOT = 'Murmline';
 export const MARKER = '<!-- murmline:v1 -->';
 const LEGACY_MARKER = '<!-- murmur:v1 -->';
 const V2_PREFIX = '<!-- murmline:v2';
-const ID_SOURCE = '[0-9]{13}_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}';
-const idPattern = new RegExp('^' + ID_SOURCE + '$');
-const quoteHeader = new RegExp('^<!-- murmline:v2 quote:(' + ID_SOURCE + ') -->$');
+// A post id is the file name stem: a 13-digit millisecond timestamp, then an
+// underscore and a filename-safe slug. Older builds used a UUID suffix; both
+// forms stay valid so existing files keep working.
+const ID_TIMESTAMP = /^\d{13}_/;
+const FORBIDDEN_ID_CHARS = new Set('\\/:*?"<>|#^[]');
+const TRAILING_NAME_CHARS = /[. ]$/;
+const V2_QUOTE_PREFIX = '<!-- murmline:v2 quote:';
+const V2_QUOTE_SUFFIX = ' -->';
 const segmenter = typeof Intl.Segmenter === 'function'
   ? new Intl.Segmenter(undefined, { granularity: 'grapheme' }) : undefined;
 
@@ -23,26 +28,67 @@ export function inspect(raw: string) {
 }
 
 export type Post = { id: string; text: string; quoteId?: string };
+
+// Slugs keep the note title readable while staying valid as a file name and
+// safe inside wikilinks. Reserved characters are collapsed to single spaces,
+// the result is trimmed and cut to a short grapheme budget.
+const MAX_SLUG = 20;
+let lastStamp = 0;
+
+// Keep ids unique within one process even for identical text created in the
+// same millisecond, without adding random characters to the title.
+function nextStamp() {
+  const now = Date.now();
+  lastStamp = now > lastStamp ? now : lastStamp + 1;
+  return lastStamp;
+}
+
+function clampGraphemes(text: string, max: number) {
+  if (segmenter) {
+    const parts: string[] = [];
+    for (const { segment } of segmenter.segment(text)) {
+      parts.push(segment);
+      if (parts.length >= max) break;
+    }
+    return parts.join('');
+  }
+  return Array.from(text).slice(0, max).join('');
+}
+
+export function slugify(text: string) {
+  let sanitized = '';
+  for (const char of text) {
+    const code = char.codePointAt(0)!;
+    sanitized += code < 0x20 || code === 0x7f || FORBIDDEN_ID_CHARS.has(char) ? ' ' : char;
+  }
+  const collapsed = sanitized.replace(/\s+/gu, ' ').trim();
+  return clampGraphemes(collapsed, MAX_SLUG).trim().replace(/[. ]+$/u, '') || 'post';
+}
+
 export function draft(text: string, quoteId?: string): Post {
-  const bytes = crypto.getRandomValues(new Uint8Array(16));
-  bytes[6] = (bytes[6]! & 15) | 64;
-  bytes[8] = (bytes[8]! & 63) | 128;
-  const hex = Array.from(bytes, byte => byte.toString(16).padStart(2, '0')).join('');
-  const uuid = [hex.slice(0, 8), hex.slice(8, 12), hex.slice(12, 16), hex.slice(16, 20), hex.slice(20)].join('-');
-  const post: Post = { id: Date.now() + '_' + uuid, text };
+  const post: Post = { id: nextStamp() + '_' + slugify(text), text };
   if (quoteId) post.quoteId = quoteId;
   return post;
 }
 export function createdAt(id: string) { return new Date(Number(id.slice(0, 13))); }
-export function isPostId(id: string) { return idPattern.test(id); }
+export function isPostId(id: string) {
+  if (!ID_TIMESTAMP.test(id) || TRAILING_NAME_CHARS.test(id)) return false;
+  const suffix = id.slice(14);
+  if (!suffix) return false;
+  for (const char of suffix) {
+    const code = char.codePointAt(0)!;
+    if (code < 0x20 || code === 0x7f || FORBIDDEN_ID_CHARS.has(char)) return false;
+  }
+  return true;
+}
 export function postPath(id: string) {
-  if (!idPattern.test(id)) throw new Error('Invalid post ID');
+  if (!isPostId(id)) throw new Error('Invalid post ID');
   return ROOT + '/' + createdAt(id).toISOString().slice(0, 7) + '/' + id + '.md';
 }
 export function pathId(path: string) {
   const name = path.slice(path.lastIndexOf('/') + 1);
   const id = name.slice(0, -3);
-  return idPattern.test(id) && path === postPath(id) ? id : null;
+  return isPostId(id) && path === postPath(id) ? id : null;
 }
 
 // A header is the first line of a post file. v2 quotes a single earlier record;
@@ -56,8 +102,10 @@ export type Header =
 export function parseHeader(header: string): Header | null {
   if (header === MARKER || header === LEGACY_MARKER) return { version: 1 };
   if (!header.startsWith(V2_PREFIX)) return null;
-  const match = quoteHeader.exec(header);
-  return match ? { version: 2, quoteId: match[1]! } : { version: 'invalid' };
+  if (!header.startsWith(V2_QUOTE_PREFIX) || !header.endsWith(V2_QUOTE_SUFFIX)
+    || header.length <= V2_QUOTE_PREFIX.length + V2_QUOTE_SUFFIX.length) return { version: 'invalid' };
+  const quoteId = header.slice(V2_QUOTE_PREFIX.length, header.length - V2_QUOTE_SUFFIX.length);
+  return isPostId(quoteId) ? { version: 2, quoteId } : { version: 'invalid' };
 }
 
 export function serialize(text: string, quoteId?: string) {
