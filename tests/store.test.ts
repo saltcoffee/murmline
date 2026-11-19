@@ -57,6 +57,23 @@ describe('vault boundary', () => {
     expect(await store.read(post.id)).toBe(post.text);
   });
 
+  it('writes and reads a quoted v2 record and rejects malformed v2 headers', async () => {
+    const { store, contents } = fixture();
+    const target = draft('original');
+    await store.publish(target);
+    const reply = draft('reply', target.id);
+    await store.publish(reply);
+    expect(contents.get(postPath(reply.id))).toBe(`<!-- murmline:v2 quote:${target.id} -->\nreply`);
+    expect(await store.readPost(reply.id)).toEqual({ text: 'reply', quoteId: target.id });
+    expect(await store.readPost(target.id)).toEqual({ text: 'original' });
+    expect(await store.read(reply.id)).toBe('reply');
+    // Self-reference and malformed arguments are invalid but keep the file.
+    contents.set(postPath(reply.id), `<!-- murmline:v2 quote:${reply.id} -->\nreply`);
+    await expect(store.readPost(reply.id)).rejects.toMatchObject({ reason: 'invalid' });
+    contents.set(postPath(reply.id), '<!-- murmline:v2 quote:bad -->\nreply');
+    await expect(store.readPost(reply.id)).rejects.toMatchObject({ reason: 'invalid' });
+  });
+
   it('keeps occupied directories and conflicting contents intact', async () => {
     const { store, files, contents } = fixture();
     const post = draft('one');
@@ -75,10 +92,11 @@ describe('vault boundary', () => {
     const target = store.file(post.id)!;
     const path = postPath(post.id);
     const remove = (current = () => true) => store.remove(post, target, current, () => {});
-    for (const other of ['ordinary note', '<!-- murmline:v2 -->\nnew']) {
-      contents.set(path, other);
-      expect(await remove()).toBe('gone');
-    }
+    contents.set(path, 'ordinary note');
+    expect(await remove()).toBe('gone');
+    // A v2 prefix with a malformed argument is reported as invalid rather than ignored.
+    contents.set(path, '<!-- murmline:v2 -->\nnew');
+    await expect(remove()).rejects.toMatchObject({ reason: 'invalid' });
     contents.set(path, MARKER + '\n' + '好'.repeat(141));
     await expect(remove()).rejects.toMatchObject({ reason: 'invalid' });
     contents.set(path, MARKER + '\nafter');

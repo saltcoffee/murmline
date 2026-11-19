@@ -2,7 +2,7 @@
 // button clears focus so a test cannot pass by focusing a detached control.
 export class TestDocument {
   activeElement: TestElement | null = null;
-  defaultView = { setInterval: () => 0 };
+  defaultView = { setInterval: () => 0, setTimeout: () => 0, clearTimeout: () => {} };
 }
 type Options = { cls?: string; text?: string; attr?: Record<string, string> };
 export class TestElement {
@@ -14,6 +14,7 @@ export class TestElement {
   value = '';
   scrollTop = 0;
   onclick?: (event: {detail: number}) => void;
+  classList = { add: (_name: string) => {}, remove: (_name: string) => {} };
   private invisible = false;
   private inactive = false;
 
@@ -29,6 +30,8 @@ export class TestElement {
     if (value && this.ownerDocument.activeElement === this) this.ownerDocument.activeElement = null;
   }
   focus() { if (!this.hidden && !this.disabled) this.ownerDocument.activeElement = this; }
+  select() { this.focus(); }
+  scrollIntoView() {}
   click(detail = 0) { if (!this.hidden && !this.disabled) this.onclick?.({ detail }); }
   createEl(_tag: string, options: Options = {}) {
     const child = new TestElement(this.ownerDocument, options.cls);

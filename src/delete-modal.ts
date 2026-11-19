@@ -57,13 +57,13 @@ export class DeleteModal extends Modal {
     this.confirm.disabled = true;
     this.retry.hidden = true;
     try {
-      const text = await this.store.read(this.post.id, true);
+      const found = await this.store.readPost(this.post.id, true);
       if (revision !== this.revision) return;
-      if (text === null || this.store.file(this.post.id) !== this.target) return this.dismissGone();
-      if (changed || text !== this.post.text) this.status.setText(this.lang.t.changed);
+      if (found === null || this.store.file(this.post.id) !== this.target) return this.dismissGone();
+      if (changed || found.text !== this.post.text || found.quoteId !== this.post.quoteId) this.status.setText(this.lang.t.changed);
       else this.status.empty();
-      this.post = { ...this.post, text };
-      this.preview.setText(text);
+      this.post = { ...this.post, text: found.text, quoteId: found.quoteId };
+      this.preview.setText(found.text);
       this.confirm.disabled = false;
       this.cancel.focus();
     } catch (error) {

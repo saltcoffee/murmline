@@ -1,6 +1,9 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { language } from '../src/i18n';
-import { dayKey, dayLabel, draft, inspect, localTime, pathId, postPath } from '../src/post';
+import {
+  dayKey, dayLabel, draft, inspect, localTime, matchesQuery, parseHeader, parseQuery, pathId, postPath,
+  serialize, tokenizeBody,
+} from '../src/post';
 
 describe('140 visible characters', () => {
   afterEach(() => { vi.unstubAllGlobals(); vi.resetModules(); });
@@ -43,4 +46,67 @@ it('groups A12 by the device calendar and labels yesterday across years', () => 
     const label = dayLabel(new Date(2025, 11, 31), new Date(2026, 0, 1), language('zh'));
     expect(label).toMatch(/昨天.*2025/);
   } finally { vi.unstubAllEnvs(); }
+});
+
+describe('tag tokens and search', () => {
+  it('renders only valid tags and preserves the rest as text (A19)', () => {
+    const source = 'https://a.com#top #2026 散步，#灵感 （#日常/晨间）';
+    const tokens = tokenizeBody(source);
+    expect(tokens.filter(token => token.type === 'tag').map(token => token.value)).toEqual(['#灵感', '#日常/晨间']);
+    expect(tokens.map(token => token.value).join('')).toBe(source);
+  });
+
+  it('rejects all-digit, slash-edged and doubled-slash bodies', () => {
+    expect(tokenizeBody('#123 #a/ /b #c//d').filter(token => token.type === 'tag')).toEqual([]);
+    expect(tokenizeBody('读书/摘录 #读书/摘录').filter(token => token.type === 'tag').map(token => token.value))
+      .toEqual(['#读书/摘录']);
+  });
+
+  it('parses AND queries and matches nested parent tags (A18)', () => {
+    const query = parseQuery('海边 #阅读');
+    expect(query).toEqual({ tags: ['#阅读'], texts: ['海边'] });
+    expect(matchesQuery('海边的 #阅读/笔记', query!)).toBe(true);
+    expect(matchesQuery('山里的 #阅读', query!)).toBe(false);
+    expect(parseQuery('   ')).toBeNull();
+    expect(matchesQuery('#阅读', parseQuery('#阅读')!)).toBe(true);
+    expect(matchesQuery('#阅读/摘录', parseQuery('#阅读')!)).toBe(true);
+    expect(matchesQuery('#阅读笔记', parseQuery('#阅读')!)).toBe(false);
+  });
+
+  it('only matches the supplied body, never a quote card (A23)', () => {
+    const query = parseQuery('星河')!;
+    expect(matchesQuery('同感', query)).toBe(false);
+    expect(matchesQuery('星河', query)).toBe(true);
+  });
+});
+
+it('serializes and parses v1 and v2 headers', () => {
+  const target = draft('x');
+  expect(serialize('body')).toBe('<!-- murmline:v1 -->\nbody');
+  expect(serialize('body', target.id)).toBe(`<!-- murmline:v2 quote:${target.id} -->\nbody`);
+  expect(parseHeader('<!-- murmline:v1 -->')).toEqual({ version: 1 });
+  expect(parseHeader('<!-- murmur:v1 -->')).toEqual({ version: 1 });
+  expect(parseHeader(`<!-- murmline:v2 quote:${target.id} -->`)).toEqual({ version: 2, quoteId: target.id });
+  expect(parseHeader('<!-- murmline:v2 -->')).toEqual({ version: 'invalid' });
+  expect(parseHeader(`<!-- murmline:v2 quote:${target.id}extra -->`)).toEqual({ version: 'invalid' });
+  expect(parseHeader('ordinary note')).toBeNull();
+});
+
+it('tokenizes and matches astral CJK tags such as #𠮷野家 (P2)', () => {
+  const tokens = tokenizeBody('晚饭 #𠮷野家 很好吃');
+  expect(tokens.filter(token => token.type === 'tag').map(token => token.value)).toEqual(['#𠮷野家']);
+  expect(matchesQuery('晚饭 #𠮷野家 很好吃', parseQuery('#𠮷野家')!)).toBe(true);
+});
+
+it('uses just the relative day in quote previews and keeps absolute dates for older posts', () => {
+  const now = new Date(2026, 10, 18, 12);
+  const zh = language('zh');
+  const preview = (date: Date) => zh.t.quoteOf(dayLabel(date, now, zh, 'compact') + ' ' + localTime(date));
+  expect(preview(new Date(2026, 10, 18, 8, 5))).toBe('正在引用 · 今天 08:05');
+  expect(preview(new Date(2026, 10, 17, 21, 3))).toBe('正在引用 · 昨天 21:03');
+  for (const date of [new Date(2026, 10, 12), new Date(2025, 10, 17)]) {
+    expect(dayLabel(date, now, zh, 'compact')).toBe(dayLabel(date, now, zh));
+  }
+  expect(preview(new Date(2025, 10, 17))).toContain('2025');
+  expect(dayLabel(new Date(2025, 11, 31), new Date(2026, 0, 1), language('en'), 'compact')).toBe('Yesterday');
 });

@@ -1,17 +1,25 @@
 import { setIcon } from 'obsidian';
-import { errorDetail, type Row } from './feed';
+import { errorDetail, type QuoteSnapshot, type Row } from './feed';
 import type { Language } from './i18n';
-import { createdAt, dayKey, dayLabel, localTime, type Post } from './post';
+import { createdAt, dayKey, dayLabel, localTime, tokenizeBody, type Post } from './post';
+
+type Handlers = {
+  menu: (post: Post, button: HTMLButtonElement) => void;
+  retry: (id: string) => void;
+  quote: (id: string) => void;
+  retryQuote: (id: string) => void;
+  tag: (tag: string) => void;
+};
 
 type Item = {
   el: HTMLElement; divider: HTMLElement; time: HTMLElement; body: HTMLElement;
-  action: HTMLButtonElement; row?: Row; dateKey?: string; clock?: string;
+  action: HTMLButtonElement; quote?: HTMLElement; row?: Row; dateKey?: string; clock?: string;
 };
 
 export class TimelineList {
   private items = new Map<string, Item>();
   constructor(private container: HTMLElement, private scroll: HTMLElement, private lang: Language,
-    private menu: (post: Post, button: HTMLButtonElement) => void, private retry: (id: string) => void) {}
+    private handlers: Handlers) {}
 
   private create(): Item {
     const el = this.container.createEl('article', { cls: 'murmline-entry' });
@@ -71,17 +79,20 @@ export class TimelineList {
       item.row = row;
       const { t } = this.lang;
       if ('text' in row) {
-        item.body.setText(row.text);
+        this.fillBody(item.body, row.text);
         item.action.empty();
         setIcon(item.action, 'ellipsis');
         item.action.title = t.more;
-        item.action.onclick = () => this.menu(row, item.action);
+        item.action.onclick = () => this.handlers.menu({ id, text: row.text, quoteId: row.quote?.id }, item.action);
+        this.renderQuote(item, row);
       } else {
         item.body.setText([t.readError, errorDetail(row.error, t)].filter(Boolean).join(' '));
         item.action.setText(t.retry);
         item.action.setAttribute('aria-label', t.retry);
         item.action.title = t.retry;
-        item.action.onclick = () => this.retry(id);
+        item.action.onclick = () => this.handlers.retry(id);
+        item.quote?.remove();
+        item.quote = undefined;
       }
     }
     if (active && this.container.contains(active) && active !== this.container.ownerDocument.activeElement)
@@ -89,9 +100,59 @@ export class TimelineList {
     if (anchor) this.scroll.scrollTop += anchor.el.getBoundingClientRect().top - offset;
   }
 
+  private fillBody(body: HTMLElement, text: string) {
+    body.empty();
+    for (const token of tokenizeBody(text)) {
+      if (token.type === 'tag') {
+        const tag = body.createEl('button', { cls: 'murmline-tag', text: token.value, attr: { type: 'button' } });
+        tag.onclick = () => this.handlers.tag(token.value);
+      } else body.createSpan({ text: token.value });
+    }
+  }
+
+  private quoteLabel(id: string) {
+    const date = createdAt(id);
+    return dayLabel(date, new Date(), this.lang) + ' ' + localTime(date);
+  }
+
+  private renderQuote(item: Item, row: { id: string; text: string; quote?: QuoteSnapshot }) {
+    item.quote?.remove();
+    item.quote = undefined;
+    const quote = row.quote;
+    if (!quote) return;
+    const { t } = this.lang;
+    if (quote.status === 'ok') {
+      const card = item.el.createEl('button', { cls: 'murmline-quote' , attr: { type: 'button' } });
+      card.createDiv({ cls: 'murmline-quote-meta', text: this.quoteLabel(quote.id) });
+      card.createDiv({ cls: 'murmline-quote-text', text: quote.text });
+      card.onclick = () => this.handlers.quote(quote.id);
+      item.quote = card;
+    } else if (quote.status === 'missing') {
+      const card = item.el.createDiv({ cls: 'murmline-quote is-missing' });
+      card.createSpan({ cls: 'murmline-quote-meta', text: t.quoteDeleted });
+      item.quote = card;
+    } else {
+      const card = item.el.createDiv({ cls: 'murmline-quote is-error' });
+      card.createSpan({ cls: 'murmline-quote-meta', text: t.quoteFailed });
+      const retry = card.createEl('button', { cls: 'murmline-quote-retry', text: t.retry, attr: { type: 'button' } });
+      retry.onclick = () => this.handlers.retryQuote(row.id);
+      item.quote = card;
+    }
+  }
+
   focus(id: string, preventScroll = true) {
     const item = this.items.get(id);
     item?.action.focus({ preventScroll });
     return !!item;
+  }
+
+  reveal(id: string) {
+    const item = this.items.get(id);
+    if (!item) return false;
+    item.el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    item.el.classList.add('is-highlighted');
+    setTimeout(() => item.el.classList.remove('is-highlighted'), 1200);
+    item.action.focus({ preventScroll: true });
+    return true;
   }
 }

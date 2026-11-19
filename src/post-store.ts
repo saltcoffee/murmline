@@ -1,11 +1,13 @@
 import { App, TFile, TFolder } from 'obsidian';
-import { inspect, MARKER, pathId, Post, postPath, ROOT } from './post';
+import { inspect, isPostId, parseHeader, pathId, Post, postPath, ROOT, serialize } from './post';
 
 export class PostError extends Error {
   constructor(readonly reason: 'invalid' | 'occupied', readonly path: string) {
     super(reason + ': ' + path);
   }
 }
+
+export type ReadPost = { text: string; quoteId?: string };
 
 export class PostStore {
   constructor(readonly app: App) {}
@@ -30,7 +32,7 @@ export class PostStore {
     return file instanceof TFile ? file : null;
   }
 
-  async read(id: string, fresh = false): Promise<string | null> {
+  async readPost(id: string, fresh = false): Promise<ReadPost | null> {
     const file = this.file(id);
     if (!file) return null;
     const vault = this.app.vault;
@@ -38,11 +40,21 @@ export class PostStore {
     if (this.file(id) !== file) return null;
     const newline = raw.indexOf('\n');
     const header = (newline < 0 ? raw : raw.slice(0, newline)).replace(/\r$/, '');
-    if (header !== MARKER && header !== '<!-- murmur:v1 -->') return null;
+    const parsed = parseHeader(header);
+    if (!parsed) return null;
+    if (parsed.version === 'invalid') throw new PostError('invalid', file.path);
     if (newline < 0) throw new PostError('invalid', file.path);
+    if (parsed.version === 2 && parsed.quoteId === id) throw new PostError('invalid', file.path);
     const body = inspect(raw.slice(newline + 1));
     if (!body.valid) throw new PostError('invalid', file.path);
-    return body.text;
+    return parsed.version === 2
+      ? { text: body.text, quoteId: parsed.quoteId }
+      : { text: body.text };
+  }
+
+  async read(id: string, fresh = false): Promise<string | null> {
+    const post = await this.readPost(id, fresh);
+    return post ? post.text : null;
   }
 
   private async ensureFolder(path: string) {
@@ -58,7 +70,9 @@ export class PostStore {
     const path = postPath(post.id);
     const body = inspect(post.text);
     if (!body.valid) throw new PostError('invalid', path);
-    const data = MARKER + '\n' + body.text;
+    if (post.quoteId !== undefined && (!isPostId(post.quoteId) || post.quoteId === post.id))
+      throw new PostError('invalid', path);
+    const data = serialize(body.text, post.quoteId);
     await this.ensureFolder(ROOT);
     await this.ensureFolder(path.slice(0, path.lastIndexOf('/')));
     try { await this.app.vault.create(path, data); }
@@ -71,10 +85,10 @@ export class PostStore {
 
   // The caller invalidates its preview synchronously on vault events and modal close.
   async remove(post: Post, target: TFile, current: () => boolean, beforeTrash: () => void) {
-    const text = await this.read(post.id, true);
+    const found = await this.readPost(post.id, true);
     if (!current()) return 'stale';
-    if (text === null || this.file(post.id) !== target) return 'gone';
-    if (text !== post.text) return 'changed';
+    if (found === null || this.file(post.id) !== target) return 'gone';
+    if (found.text !== post.text || found.quoteId !== post.quoteId) return 'changed';
     beforeTrash();
     await this.app.fileManager.trashFile(target);
     return 'deleted';
