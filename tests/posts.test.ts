@@ -1,8 +1,8 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { language } from '../src/i18n';
 import {
-  dayKey, dayLabel, draft, inspect, localTime, matchesQuery, parseHeader, parseQuery, pathId, postPath,
-  serialize, tokenizeBody,
+  dayKey, dayLabel, draft, inspect, isPostId, localTime, matchesQuery, parseHeader, parseQuery, pathId,
+  postPath, serialize, slugify, tokenizeBody,
 } from '../src/post';
 
 describe('140 visible characters', () => {
@@ -19,13 +19,36 @@ describe('140 visible characters', () => {
   });
 });
 
-it('round-trips only canonical paths for this UTC month and UUID', () => {
+it('round-trips only canonical paths for this UTC month and timestamp', () => {
   const post = draft(inspect(' hello ').text);
   expect(pathId(postPath(post.id))).toBe(post.id);
   expect(pathId(postPath(post.id).replace(/\/\d{4}-\d{2}\//, '/2000-01/'))).toBeNull();
   expect(pathId('Another/' + postPath(post.id))).toBeNull();
   expect(pathId(postPath(post.id) + 'x')).toBeNull();
   expect(() => postPath('../note')).toThrow();
+});
+
+describe('content-derived file names', () => {
+  it('names a new post after its text with the millisecond stamp first', () => {
+    const post = draft('今天天气真不错，但是周老师不理我。');
+    expect(post.id).toMatch(/^\d{13}_今天天气真不错/);
+    expect(pathId(postPath(post.id))).toBe(post.id);
+    expect(isPostId(post.id)).toBe(true);
+  });
+
+  it('strips path/link characters and bounds the slug length', () => {
+    const post = draft('a/b\\c:d*e?f"g<h>i|j#k^l[m]n '.repeat(5));
+    const forbidden = '\\/:*?"<>|#^[]';
+    for (const char of post.id.slice(14)) expect(forbidden.includes(char)).toBe(false);
+    expect([...post.id.slice(14)].length).toBeLessThanOrEqual(20);
+    expect([...post.id.slice(14)].length).toBeGreaterThan(0);
+  });
+
+  it('falls back to a stable slug and keeps legacy UUID ids valid', () => {
+    expect(slugify('###  ')).toBe('post');
+    expect(isPostId('1794969720000_9ff8b1a2-7f60-4d65-9a5d-4485b82f80d')).toBe(true);
+    expect(isPostId('1794969720000_bad/id')).toBe(false);
+  });
 });
 
 it('selects the host language for both commands and feedback', () => {
@@ -88,7 +111,8 @@ it('serializes and parses v1 and v2 headers', () => {
   expect(parseHeader('<!-- murmur:v1 -->')).toEqual({ version: 1 });
   expect(parseHeader(`<!-- murmline:v2 quote:${target.id} -->`)).toEqual({ version: 2, quoteId: target.id });
   expect(parseHeader('<!-- murmline:v2 -->')).toEqual({ version: 'invalid' });
-  expect(parseHeader(`<!-- murmline:v2 quote:${target.id}extra -->`)).toEqual({ version: 'invalid' });
+  expect(parseHeader('<!-- murmline:v2 quote:not-an-id -->')).toEqual({ version: 'invalid' });
+  expect(parseHeader('<!-- murmline:v2 quote:2026-11-18 -->')).toEqual({ version: 'invalid' });
   expect(parseHeader('ordinary note')).toBeNull();
 });
 

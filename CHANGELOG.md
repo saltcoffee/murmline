@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.2.1
+
+### English
+
+- Name new posts after an excerpt of their own text, so a note's title reads like the thought instead of a random timestamp and UUID. The timestamp prefix keeps the timeline order and older files keep working unchanged.
+- Remove the hover tooltips that appeared over the composer and the search field.
+
+### 简体中文
+
+- 新发布的记录以正文摘要作为文件名，笔记标题直接显示想法内容，不再是随机的时间戳与 UUID。保留时间戳前缀以维持时间线顺序，旧文件无需改动仍可正常读取。
+- 去掉输入框与搜索框上方的悬停浮层提示。
+
 ## 0.2.0
 
 ### English
