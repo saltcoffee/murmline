@@ -2,7 +2,8 @@ import type { TFile, WorkspaceLeaf } from 'obsidian';
 import { afterEach, expect, it, vi } from 'vitest';
 import { DeleteModal } from '../src/delete-modal';
 import { language } from '../src/i18n';
-import type { PostStore } from '../src/post-store';
+import { PostError, type PostStore } from '../src/post-store';
+import { postPath } from '../src/post';
 import { TimelineView } from '../src/timeline-view';
 import { TestElement } from './ui-fixture';
 
@@ -26,7 +27,7 @@ it('allows dismissal during the final read, before deletion starts', async () =>
   const trash = vi.fn();
   const target = {} as TFile;
   const store = {
-    file: () => target, read: async () => 'test',
+    file: () => target, readPost: async () => ({ text: 'test' }),
     remove: async (_post: unknown, _file: TFile, current: () => boolean, commit: () => void) => {
       await preflight.promise;
       if (!current()) return 'stale';
@@ -53,7 +54,7 @@ it.each(['success', 'failure'])('locks dismissal while trash is pending, then ha
   const write = deferred<void>();
   const target = {} as TFile;
   const store = {
-    file: () => target, read: async () => 'test',
+    file: () => target, readPost: async () => ({ text: 'test' }),
     remove: vi.fn(async (_post, _file, _current, commit) => {
       commit();
       await write.promise;
@@ -88,7 +89,7 @@ it.each(['success', 'failure'])('locks dismissal while trash is pending, then ha
 
 async function timeline(size: number) {
   const keys = Array.from({length: size}, (_, i) => key(start + i));
-  const store = { list: () => keys, read: vi.fn(async (id: string) => id) };
+  const store = { list: () => keys, file: () => ({ stat: { mtime: 1, size: 1 } }), readPost: vi.fn(async (id: string) => ({ text: id })) };
   const view = new TimelineView({} as WorkspaceLeaf, store as unknown as PostStore, lang);
   await view.onOpen();
   const root = view.contentEl as unknown as TestElement;
@@ -99,8 +100,8 @@ async function timeline(size: number) {
 
 it.each([51, 101])('keeps keyboard focus through pagination with %i posts', async size => {
   const {root, store, keys, older} = await timeline(size);
-  const gate = deferred<string>();
-  store.read.mockImplementationOnce(() => gate.promise);
+  const gate = deferred<{ text: string }>();
+  store.readPost.mockImplementationOnce(() => gate.promise);
   older.focus();
   older.click();
   older.click();
@@ -108,25 +109,25 @@ it.each([51, 101])('keeps keyboard focus through pagination with %i posts', asyn
   expect(older.attributes.get('aria-disabled')).toBe('true');
   expect(root.ownerDocument.activeElement).toBe(older);
   const next = keys[size - 51]!;
-  gate.resolve(next);
+  gate.resolve({ text: next });
   await vi.waitFor(() => {
     const action = root.find(el => el.dataset.id === next)?.find(el => el.cls.includes('murmline-action'));
     expect(action).toBeDefined();
     expect(root.ownerDocument.activeElement).toBe(action);
   });
   expect(older.hidden).toBe(size === 51);
-  expect(store.read).toHaveBeenCalledTimes(Math.min(size, 100));
+  expect(store.readPost).toHaveBeenCalledTimes(Math.min(size, 100));
 });
 
 it('preserves focus moved elsewhere during a keyboard page read', async () => {
   const {root, store, keys, older} = await timeline(51);
-  const gate = deferred<string>();
-  store.read.mockImplementationOnce(() => gate.promise);
+  const gate = deferred<{ text: string }>();
+  store.readPost.mockImplementationOnce(() => gate.promise);
   older.focus();
   older.click();
   const other = root.find(el => el.attributes.has('placeholder'))!;
   other.focus();
-  gate.resolve(keys[0]!);
+  gate.resolve({ text: keys[0]! });
   await vi.waitFor(() => expect(older.hidden).toBe(true));
   expect(root.ownerDocument.activeElement).toBe(other);
 });
@@ -141,4 +142,93 @@ it('refreshes the visible time and accessible action name on the same cached row
     expect(action.attributes.get('aria-label')).toBe('More · ' + time);
     expect(root.find(el => el.textContent === time)).toBeDefined();
   }
+});
+
+it('renders quote cards and clickable tags, and lazily reveals the search bar', async () => {
+  const a = key(start);
+  const b = key(start + 1);
+  const data: Record<string, { text: string; quoteId?: string }> = {
+    [a]: { text: '原想法' },
+    [b]: { text: '回复 #标签', quoteId: a },
+  };
+  const store = { list: () => [a, b], file: () => ({ stat: { mtime: 1, size: 1 } }), readPost: vi.fn(async (id: string) => data[id] ?? null) };
+  const view = new TimelineView({} as WorkspaceLeaf, store as unknown as PostStore, lang);
+  await view.onOpen();
+  const root = view.contentEl as unknown as TestElement;
+  await vi.waitFor(() => expect(root.find(el => el.cls === 'murmline-quote')).toBeDefined());
+  const quoteText = root.find(el => el.cls === 'murmline-quote-text');
+  expect(quoteText?.textContent).toBe('原想法');
+  const tag = root.find(el => el.cls === 'murmline-tag');
+  expect(tag?.textContent).toBe('#标签');
+  const search = root.find(el => el.cls === 'murmline-search')!;
+  expect(search.hidden).toBe(false);
+});
+
+it('cancels a pending debounce when a filter is applied immediately (P1)', async () => {
+  const { view } = await timeline(2);
+  const v = view as unknown as {
+    searchInput: TestElement; searchTimer?: number;
+    scheduleSearch: (immediate: boolean) => void; applySearch: (value: string) => void;
+  };
+  v.searchInput.value = 'alpha';
+  v.scheduleSearch(false);
+  expect(v.searchTimer).toBeDefined();
+  v.applySearch('');
+  expect(v.searchTimer).toBeUndefined();
+});
+
+it('recovers a missing quote preview when the target returns (P2)', async () => {
+  const a = key(start);
+  const store = {
+    list: () => [a],
+    file: (id: string) => id === a ? ({ stat: { ctime: 1, mtime: 1, size: 1 } } as TFile) : null,
+    readPost: vi.fn(async (id: string) => id === a ? { text: '原想法' } : null),
+  };
+  const view = new TimelineView({} as WorkspaceLeaf, store as unknown as PostStore, lang);
+  await view.onOpen();
+  const v = view as unknown as {
+    quoting?: { id: string; text: string; missing?: boolean };
+    startQuote: (post: { id: string; text: string }) => void;
+    quoteChanged: (path: string, moved: boolean) => void;
+  };
+  v.startQuote({ id: a, text: '原想法' });
+  v.quoteChanged(postPath(a), true);
+  expect(v.quoting?.missing).toBe(true);
+  v.quoteChanged(postPath(a), false);
+  await vi.waitFor(() => expect(v.quoting?.missing).toBe(false));
+});
+
+it('discards a queued timeline page when a search starts before it runs', async () => {
+  const { view, older } = await timeline(160);
+  older.click();
+  view['applySearch']('00000000');
+  await view['serial'];
+  expect(view['feed'].rows.size).toBe(50);
+  expect(view['feed'].more).toBe(true);
+});
+
+it('keeps the newest draft preview through out-of-order reads, invalid markers and moves', async () => {
+  const { view, store, keys } = await timeline(1);
+  const id = keys[0]!;
+  Object.assign(store, { file: () => ({}) });
+  view['startQuote']({ id, text: 'original' });
+  const slow = deferred<{ text: string }>();
+  store.readPost.mockImplementationOnce(() => slow.promise).mockResolvedValueOnce({ text: 'latest' });
+  view['quoteChanged'](postPath(id), false);
+  view['quoteChanged'](postPath(id), false);
+  await vi.waitFor(() => expect(view['quoting']?.text).toBe('latest'));
+  slow.resolve({ text: 'older' });
+  await slow.promise;
+  expect(view['quoting']?.text).toBe('latest');
+
+  store.readPost.mockRejectedValueOnce(new PostError('invalid', postPath(id)));
+  view['quoteChanged'](postPath(id), false);
+  await vi.waitFor(() => expect(view['quoting']?.missing).toBe(true));
+  const moved = deferred<{ text: string }>();
+  store.readPost.mockImplementationOnce(() => moved.promise);
+  view['quoteChanged'](postPath(id), false);
+  view['quoteChanged'](postPath(id), true);
+  moved.resolve({ text: 'restored too late' });
+  await moved.promise;
+  expect(view['quoting']?.missing).toBe(true);
 });

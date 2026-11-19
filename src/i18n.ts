@@ -10,6 +10,15 @@ const en = {
   today: 'Today', yesterday: 'Yesterday', openError: 'Could not open Murmline.',
   invalid: 'Invalid thought file', occupied: 'Storage path is in use',
   over: (n: number) => n + (n === 1 ? ' character over the limit' : ' characters over the limit'),
+  quote: 'Quote', cancelQuote: 'Cancel quote', quoteOf: (label: string) => 'Quoting · ' + label,
+  copyText: 'Copy text', copiedText: 'Copied text',
+  copyLink: 'Copy link', copiedLink: 'Copied link', copyError: 'Could not copy. Please try again.',
+  openSource: 'Open source file',
+  quoteDeleted: 'The original thought was deleted or is unavailable.',
+  quoteFailed: 'Could not read the original thought.',
+  searchPlaceholder: 'Search thoughts or #tags…', clearSearch: 'Clear search',
+  searching: 'Searching…', noResults: 'No matching thoughts.',
+  searchPartial: (n: number) => n + (n === 1 ? ' record could not be read.' : ' records could not be read.'),
 };
 export type Messages = typeof en;
 const zh: Messages = {
@@ -24,6 +33,15 @@ const zh: Messages = {
   today: '今天', yesterday: '昨天', openError: '无法打开 Murmline。',
   invalid: '记录文件无效', occupied: '存储路径已被占用',
   over: n => '已超出 ' + n + ' 字',
+  quote: '引用', cancelQuote: '取消引用', quoteOf: label => '正在引用 · ' + label,
+  copyText: '复制正文', copiedText: '已复制正文',
+  copyLink: '复制笔记链接', copiedLink: '已复制链接', copyError: '复制失败，请重试。',
+  openSource: '打开源文件',
+  quoteDeleted: '原想法已删除或不可用',
+  quoteFailed: '原想法读取失败',
+  searchPlaceholder: '搜索想法或 #标签…', clearSearch: '清除搜索',
+  searching: '正在搜索…', noResults: '没有找到匹配的想法',
+  searchPartial: n => '有 ' + n + ' 条记录读取失败',
 };
 export function language(code: string) {
   return /^zh(?:[-_]|$)/i.test(code)

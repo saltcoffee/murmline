@@ -10,15 +10,6 @@
   margin: 0 auto;
   padding: 16px 16px 32px;
 }
-.murmline-view .murmline-field { display: block; }
-.murmline-view .murmline-sr-only {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  overflow: hidden;
-  clip-path: inset(50%);
-  white-space: nowrap;
-}
 .murmline-view .murmline-composer textarea {
   display: block;
   width: 100%;
@@ -57,7 +48,7 @@
   flex: 1;
   border-top: 1px solid var(--background-modifier-border);
 }
-.murmline-view [hidden] { display: none; }
+.murmline-view [hidden] { display: none !important; }
 .murmline-meta { justify-content: space-between; }
 .murmline-action { min-width: 30px; min-height: 30px; }
 .murmline-body, .murmline-preview { white-space: pre-wrap; overflow-wrap: anywhere; }
@@ -70,4 +61,102 @@
   .murmline-view .murmline-column { padding-inline: 6px; }
   .murmline-controls, .murmline-meta { gap: 4px; }
   .murmline-divider { overflow-wrap: anywhere; }
+}
+
+/* 0.2.0 — quote preview bar, quote card, tags, search and highlight */
+.murmline-view .murmline-quote-bar {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin-block-end: 8px;
+  padding: 8px 10px;
+  border-inline-start: 2px solid var(--interactive-accent);
+  border-radius: var(--radius-s);
+  background: var(--background-secondary);
+}
+.murmline-view .murmline-quote-bar-label {
+  font-size: var(--font-small);
+  color: var(--text-muted);
+}
+.murmline-view .murmline-quote-bar-text {
+  margin-block-start: 2px;
+  font-size: var(--font-small);
+  color: var(--text-normal);
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+}
+.murmline-view .murmline-quote-cancel { margin-inline-start: auto; flex: none; }
+
+.murmline-view .murmline-quote {
+  display: block;
+  width: 100%;
+  margin-block-start: 8px;
+  padding-inline-start: 10px;
+  border: none;
+  border-inline-start: 2px solid var(--interactive-accent);
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  font: inherit;
+  text-align: start;
+  cursor: pointer;
+}
+.murmline-view button.murmline-quote:hover { background: var(--background-modifier-hover); }
+.murmline-view .murmline-quote.is-missing,
+.murmline-view .murmline-quote.is-error { border-inline-start-color: var(--text-faint); cursor: default; }
+.murmline-view .murmline-quote.is-error { border-inline-start-color: var(--text-error); }
+.murmline-view .murmline-quote-meta { font-size: var(--font-small); color: var(--text-muted); }
+.murmline-view .murmline-quote-text {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  color: var(--text-normal);
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  overflow: hidden;
+}
+.murmline-view .murmline-quote-retry { margin-inline-start: 8px; }
+
+.murmline-view .murmline-tag {
+  display: inline;
+  padding: 0 4px;
+  border: none;
+  border-radius: var(--radius-s);
+  background: var(--background-modifier-hover);
+  box-shadow: none;
+  color: var(--text-accent);
+  font: inherit;
+  line-height: inherit;
+  cursor: pointer;
+}
+.murmline-view .murmline-tag:hover,
+.murmline-view .murmline-tag:focus-visible { background: var(--background-modifier-active-hover); }
+
+.murmline-view .murmline-search {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-block-start: 12px;
+}
+.murmline-view .murmline-search-input {
+  flex: 1;
+  min-width: 0;
+  font: inherit;
+  font-size: var(--font-small);
+}
+.murmline-view .murmline-search-status {
+  margin-block-start: 4px;
+  font-size: var(--font-small);
+  color: var(--text-muted);
+}
+.murmline-view .murmline-search-status:empty { display: none; }
+
+.murmline-view .murmline-entry.is-highlighted {
+  animation: murmline-highlight 1.2s ease-out;
+}
+@keyframes murmline-highlight {
+  from { background: var(--text-selection); }
+  to { background: transparent; }
 }

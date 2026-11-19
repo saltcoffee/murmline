@@ -26,6 +26,12 @@ After posting, the box is ready for your next thought. An unfinished draft stays
 
 Scroll back through your timeline and choose **Load earlier thoughts** for the next 50 entries. Times and day headings follow your device’s time zone. To remove one thought, open its **More (⋯)** menu, choose **Delete**, review the text, and confirm. Murmline follows your vault’s file deletion preference.
 
+## Quote, copy, and search
+
+To respond to an earlier thought, open its **More (⋯)** menu and choose **Quote**. Write a new thought; the original stays the same and your reply shows a single-level quote card beneath it. The same menu can copy the plain text, copy a note link that follows your Obsidian link format, or open the source file in a new tab.
+
+Type in the search box to filter the whole `Murmline/` folder by keyword, or click a `#tag` in any thought to filter by it. Tags such as `#reading/notes` are clickable, and searching `#reading` also finds `#reading/notes`. Results keep the timeline layout and load 50 at a time.
+
 ## Your data and language
 
 Each thought is an ordinary Markdown file in your vault’s `Murmline/` folder. You can read it after disabling the plugin. Posting works offline. Your existing vault sync, backup, and sharing settings also apply to these files.
