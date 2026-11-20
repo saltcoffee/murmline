@@ -1,15 +1,27 @@
 # Changelog
 
-## 0.2.1
+## 0.2.2
 
 ### English
 
 - New posts use a local date and text excerpt such as `2026.11.20_你好.md`. Same-day duplicates receive a numbered suffix. Existing notes and quotes remain readable.
-- Remove the hover tooltips that appeared over the composer and the search field.
+- Show only the placeholder in each empty input and keep long quote previews from overlapping the next thought.
 
 ### 简体中文
 
 - 新记录按本地日期和正文摘要命名，例如 `2026.11.20_你好.md`。同日同名的记录自动添加序号，旧笔记及其引用仍可读取。
+- 正文框和搜索框为空时只显示框内提示，较长的引用预览也能完整换行，避免与下一条想法重叠。
+
+## 0.2.1
+
+### English
+
+- Name new posts after an excerpt of their own text, so a note's title reads like the thought instead of a random timestamp and UUID. The timestamp prefix keeps the timeline order and older files keep working unchanged.
+- Remove the hover tooltips that appeared over the composer and the search field.
+
+### 简体中文
+
+- 新发布的记录以正文摘要作为文件名，笔记标题直接显示想法内容，不再是随机的时间戳与 UUID。保留时间戳前缀以维持时间线顺序，旧文件无需改动仍可正常读取。
 - 去掉输入框与搜索框上方的悬停浮层提示。
 
 ## 0.2.0
