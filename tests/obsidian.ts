@@ -21,9 +21,19 @@ export class ItemView {
   app = {
     workspace: { onLayoutReady(callback: () => void) { callback(); } },
     vault: { on() {} },
+    metadataCache: { on() {} },
   };
   registerDomEvent() {}
   registerEvent() {}
   registerInterval() {}
 }
 export function setIcon() {}
+
+export function getFrontMatterInfo(raw: string) {
+  const match = /^---\r?\n([\s\S]*?)\r?\n---(?:\r?\n|$)/.exec(raw);
+  return { exists: !!match, contentStart: match?.[0].length ?? 0, frontmatter: match?.[1] ?? '' };
+}
+export function parseYaml(source: string) {
+  const match = /^murmline-created: (\d+)$/m.exec(source);
+  return match ? { 'murmline-created': Number(match[1]) } : {};
+}

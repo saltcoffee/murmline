@@ -1,9 +1,9 @@
-import { ItemView, Menu, Notice, Scope, setIcon, type WorkspaceLeaf } from 'obsidian';
+import { ItemView, Menu, Notice, Scope, setIcon, TFile, type TAbstractFile, type WorkspaceLeaf } from 'obsidian';
 import { DeleteModal } from './delete-modal';
 import { errorDetail, Feed, type SearchBegin } from './feed';
 import type { Language } from './i18n';
-import { createdAt, dayKey, dayLabel, draft, inspect, LIMIT, localTime, pathId, Post, postPath, ROOT } from './post';
-import { PostError, PostStore } from './post-store';
+import { createdAt, dayKey, dayLabel, draft, inspect, LIMIT, localTime, Post, postPath, ROOT } from './post';
+import { CREATED, PostError, PostStore } from './post-store';
 import { TimelineList } from './timeline-list';
 
 export const VIEW = 'murmline-timeline';
@@ -161,12 +161,17 @@ export class TimelineView extends ItemView {
     this.app.workspace.onLayoutReady(() => {
       if (!this.live) return;
       const vault = this.app.vault;
-      this.registerEvent(vault.on('create', file => this.change(file.path)));
-      this.registerEvent(vault.on('modify', file => this.change(file.path)));
-      this.registerEvent(vault.on('delete', file => this.change(file.path, true)));
+      this.registerEvent(vault.on('create', file => this.fileChanged(file, file.path)));
+      this.registerEvent(vault.on('modify', file => this.fileChanged(file, file.path)));
+      this.registerEvent(vault.on('delete', file => this.fileChanged(file, file.path, true)));
       this.registerEvent(vault.on('rename', (file, oldPath) => {
-        this.change(oldPath, true);
-        this.change(file.path);
+        this.fileChanged(file, oldPath, true);
+        this.fileChanged(file, file.path);
+      }));
+      this.registerEvent(this.app.metadataCache.on('changed', (file, _data, cache) => {
+        for (const id of this.store.metadataChanged(file, cache.frontmatter?.[CREATED])) {
+          this.change(file.path, id);
+        }
       }));
       this.page();
     });
@@ -192,9 +197,13 @@ export class TimelineView extends ItemView {
     return this.serial;
   }
 
-  private change(path: string, moved = false) {
-    if (!this.live || !(path === ROOT || /^Murmline\/\d{4}-\d\d$/.test(path) || pathId(path))) return;
-    this.dirty.add(path);
+  private fileChanged(file: TAbstractFile, path: string, moved = false) {
+    this.change(path, file instanceof TFile ? this.store.idAt(file, path) : null, moved);
+  }
+
+  private change(path: string, id: string | null, moved = false) {
+    if (!this.live || !(path === ROOT || /^Murmline\/\d{4}-\d\d$/.test(path) || id)) return;
+    this.dirty.add(id ?? path);
     if (!this.queuedChanges) {
       this.queuedChanges = true;
       void this.run(async () => {
@@ -426,7 +435,7 @@ export class TimelineView extends ItemView {
     this.input.value = '';
     this.updateQuoteBar();
     this.updateComposer();
-    this.change(postPath(post.id));
+    this.change(postPath(post.id), post.id);
     this.focusComposer();
   }
 
@@ -496,7 +505,7 @@ export class TimelineView extends ItemView {
     this.modal = new DeleteModal(this.store, this.lang, post, target, deleted => {
       this.modal = undefined;
       if (!this.live) return;
-      if (deleted) this.change(postPath(post.id), true);
+      if (deleted) this.change(postPath(post.id), post.id, true);
       void this.serial.then(() => {
         if (!this.live) return;
         const candidates = deleted ? neighbors : [post.id, ...neighbors];

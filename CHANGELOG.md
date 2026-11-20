@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.2.2
+
+### English
+
+- New posts use a local date and text excerpt such as `2026.11.20_你好.md`. Same-day duplicates receive a numbered suffix. Existing notes and quotes remain readable.
+- Show only the placeholder in each empty input and keep long quote previews from overlapping the next thought.
+
+### 简体中文
+
+- 新记录按本地日期和正文摘要命名，例如 `2026.11.20_你好.md`。同日同名的记录自动添加序号，旧笔记及其引用仍可读取。
+- 正文框和搜索框为空时只显示框内提示，较长的引用预览也能完整换行，避免与下一条想法重叠。
+
 ## 0.2.1
 
 ### English
