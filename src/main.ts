@@ -7,9 +7,8 @@ export default class Murmline extends Plugin {
   private opening?: Promise<void>;
 
   override onload() {
-    const store = new PostStore(this.app);
     const lang = language(getLanguage());
-    this.registerView(VIEW, leaf => new TimelineView(leaf, store, lang));
+    this.registerView(VIEW, leaf => new TimelineView(leaf, new PostStore(this.app), lang));
     const capture = () => {
       this.opening ??= this.openTimeline().catch(() => { new Notice(lang.t.openError); })
         .finally(() => { this.opening = undefined; });

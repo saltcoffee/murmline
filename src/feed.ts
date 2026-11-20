@@ -1,5 +1,5 @@
 import type { TFile } from 'obsidian';
-import { matchesQuery, parseQuery, pathId, postPath, ROOT, type ParsedQuery } from './post';
+import { isPostId, matchesQuery, parseQuery, postPath, ROOT, type ParsedQuery } from './post';
 import { PostError, type PostStore } from './post-store';
 
 export type QuoteSnapshot =
@@ -119,7 +119,7 @@ export class Feed {
   }
 
   async reload(id: string) {
-    if (this.searchMode) { await this.updateSearch(new Set([postPath(id)]), () => true); return; }
+    if (this.searchMode) { await this.updateSearch(new Set([id]), () => true); return; }
     await this.reloadTimeline(id);
   }
 
@@ -182,9 +182,8 @@ export class Feed {
           (stamp && inFolders(id, folders) && revisionChanged(stamp, this.store.file(id)))) affected.add(id);
       }
     }
-    for (const path of paths) {
-      const id = pathId(path);
-      if (!id) continue;
+    for (const id of paths) {
+      if (!isPostId(id)) continue;
       affected.add(id);
       if (this.store.file(id)) {
         if (!this.candidates.has(id)) added.add(id);
@@ -324,10 +323,7 @@ export class Feed {
         if (previous && inFolders(id, folders) && revisionChanged(previous, this.store.file(id))) changed.add(id);
       }
     }
-    for (const path of paths) {
-      const id = pathId(path);
-      if (id) changed.add(id);
-    }
+    for (const id of paths) if (isPostId(id)) changed.add(id);
     if (!changed.size) return;
 
     const hits = this.hits!;

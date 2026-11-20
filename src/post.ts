@@ -6,10 +6,10 @@ export const ROOT = 'Murmline';
 export const MARKER = '<!-- murmline:v1 -->';
 const LEGACY_MARKER = '<!-- murmur:v1 -->';
 const V2_PREFIX = '<!-- murmline:v2';
-// A post id is the file name stem: a 13-digit millisecond timestamp, then an
-// underscore and a filename-safe slug. Older builds used a UUID suffix; both
-// forms stay valid so existing files keep working.
-const ID_TIMESTAMP = /^\d{13}_/;
+// Legacy IDs are the original filename. New IDs pair the exact creation time
+// with a local-date filename so a reference survives a change of time zone.
+const ID_TIMESTAMP = /^\d{13}[_@]/;
+const DATE_STEM = /^\d{4}\.(?:0[1-9]|1[0-2])\.(?:0[1-9]|[12]\d|3[01])_.+/u;
 const FORBIDDEN_ID_CHARS = new Set('\\/:*?"<>|#^[]');
 const TRAILING_NAME_CHARS = /[. ]$/;
 const V2_QUOTE_PREFIX = '<!-- murmline:v2 quote:';
@@ -66,7 +66,11 @@ export function slugify(text: string) {
 }
 
 export function draft(text: string, quoteId?: string): Post {
-  const post: Post = { id: nextStamp() + '_' + slugify(text), text };
+  const stamp = nextStamp();
+  const date = new Date(stamp);
+  const day = [date.getFullYear(), date.getMonth() + 1, date.getDate()]
+    .map(n => String(n).padStart(2, '0')).join('.');
+  const post: Post = { id: stamp + '@' + day + '_' + slugify(text), text };
   if (quoteId) post.quoteId = quoteId;
   return post;
 }
@@ -74,7 +78,7 @@ export function createdAt(id: string) { return new Date(Number(id.slice(0, 13)))
 export function isPostId(id: string) {
   if (!ID_TIMESTAMP.test(id) || TRAILING_NAME_CHARS.test(id)) return false;
   const suffix = id.slice(14);
-  if (!suffix) return false;
+  if (!suffix || (id[13] === '@' && !DATE_STEM.test(suffix))) return false;
   for (const char of suffix) {
     const code = char.codePointAt(0)!;
     if (code < 0x20 || code === 0x7f || FORBIDDEN_ID_CHARS.has(char)) return false;
@@ -83,11 +87,16 @@ export function isPostId(id: string) {
 }
 export function postPath(id: string) {
   if (!isPostId(id)) throw new Error('Invalid post ID');
+  if (id[13] === '@') {
+    const stem = id.slice(14);
+    return ROOT + '/' + stem.slice(0, 7).replace('.', '-') + '/' + stem + '.md';
+  }
   return ROOT + '/' + createdAt(id).toISOString().slice(0, 7) + '/' + id + '.md';
 }
-export function pathId(path: string) {
+export function pathId(path: string, stamp?: unknown) {
   const name = path.slice(path.lastIndexOf('/') + 1);
-  const id = name.slice(0, -3);
+  const stem = name.slice(0, -3);
+  const id = DATE_STEM.test(stem) && typeof stamp === 'number' ? stamp + '@' + stem : stem;
   return isPostId(id) && path === postPath(id) ? id : null;
 }
 

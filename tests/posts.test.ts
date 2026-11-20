@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { language } from '../src/i18n';
 import {
-  dayKey, dayLabel, draft, inspect, isPostId, localTime, matchesQuery, parseHeader, parseQuery, pathId,
+  dayKey, dayLabel, draft, isPostId, localTime, matchesQuery, parseHeader, parseQuery, pathId,
   postPath, serialize, slugify, tokenizeBody,
 } from '../src/post';
 
@@ -20,7 +20,7 @@ describe('140 visible characters', () => {
 });
 
 it('round-trips only canonical paths for this UTC month and timestamp', () => {
-  const post = draft(inspect(' hello ').text);
+  const post = { id: '1795138832796_hello' };
   expect(pathId(postPath(post.id))).toBe(post.id);
   expect(pathId(postPath(post.id).replace(/\/\d{4}-\d{2}\//, '/2000-01/'))).toBeNull();
   expect(pathId('Another/' + postPath(post.id))).toBeNull();
@@ -29,19 +29,21 @@ it('round-trips only canonical paths for this UTC month and timestamp', () => {
 });
 
 describe('content-derived file names', () => {
-  it('names a new post after its text with the millisecond stamp first', () => {
+  it('uses a local calendar date and the excerpt for the physical filename', () => {
     const post = draft('今天天气真不错，但是周老师不理我。');
-    expect(post.id).toMatch(/^\d{13}_今天天气真不错/);
-    expect(pathId(postPath(post.id))).toBe(post.id);
+    const date = new Date(Number(post.id.slice(0, 13)));
+    const day = [date.getFullYear(), date.getMonth() + 1, date.getDate()].map(n => String(n).padStart(2, '0')).join('.');
+    expect(postPath(post.id)).toBe('Murmline/' + day.slice(0, 7).replace('.', '-') + '/' + day + '_今天天气真不错，但是周老师不理我。.md');
+    expect(pathId(postPath(post.id), date.getTime())).toBe(post.id);
     expect(isPostId(post.id)).toBe(true);
   });
 
   it('strips path/link characters and bounds the slug length', () => {
     const post = draft('a/b\\c:d*e?f"g<h>i|j#k^l[m]n '.repeat(5));
     const forbidden = '\\/:*?"<>|#^[]';
-    for (const char of post.id.slice(14)) expect(forbidden.includes(char)).toBe(false);
-    expect([...post.id.slice(14)].length).toBeLessThanOrEqual(20);
-    expect([...post.id.slice(14)].length).toBeGreaterThan(0);
+    for (const char of post.id.slice(25)) expect(forbidden.includes(char)).toBe(false);
+    expect([...post.id.slice(25)].length).toBeLessThanOrEqual(20);
+    expect([...post.id.slice(25)].length).toBeGreaterThan(0);
   });
 
   it('falls back to a stable slug and keeps legacy UUID ids valid', () => {

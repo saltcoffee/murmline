@@ -2,7 +2,7 @@ import type { App } from 'obsidian';
 import { describe, expect, it, vi } from 'vitest';
 import { draft, MARKER, postPath } from '../src/post';
 import { PostStore } from '../src/post-store';
-import { Entry, TFile, TFolder } from './obsidian';
+import { Entry, getFrontMatterInfo, parseYaml, TFile, TFolder } from './obsidian';
 
 function fixture() {
   const files = new Map<string, Entry>();
@@ -29,7 +29,10 @@ function fixture() {
     read, cachedRead: read,
   };
   const trashFile = vi.fn(async (file: TFile) => { files.delete(file.path); contents.delete(file.path); });
-  const app = { vault, fileManager: { trashFile } } as unknown as App;
+  const metadataCache = { getFileCache(file: TFile) {
+    return { frontmatter: parseYaml(getFrontMatterInfo(contents.get(file.path) ?? '').frontmatter) };
+  } };
+  const app = { vault, metadataCache, fileManager: { trashFile } } as unknown as App;
   return { store: new PostStore(app), vault, files, contents, trashFile };
 }
 
@@ -43,14 +46,39 @@ describe('vault boundary', () => {
     await store.publish(post);
     expect(store.list()).toEqual([post.id]);
     expect(await store.read(post.id)).toBe(post.text);
-    expect(contents.get(postPath(post.id))).toBe(MARKER + '\n hi\n');
-    await store.publish(draft(post.text));
-    expect(store.list()).toHaveLength(2);
+    expect(contents.get(postPath(post.id))).toBe('---\nmurmline-created: ' + post.id.slice(0, 13) + '\n---\n' + MARKER + '\n hi\n');
+    const duplicate = draft(post.text, post.id);
+    await store.publish(duplicate);
+    expect(postPath(duplicate.id)).toBe(postPath(post.id).replace('.md', ' (2).md'));
+    const reopened = new PostStore(store.app);
+    expect(reopened.list()).toEqual([post.id, duplicate.id]);
+    expect(await reopened.readPost(duplicate.id)).toEqual({ text: post.text, quoteId: post.id });
+  });
+
+  it('keeps a pending duplicate at its attempted path after a lost acknowledgement', async () => {
+    const { store, vault, files, contents } = fixture();
+    const first = draft('你好');
+    await store.publish(first);
+    const second = draft('你好');
+    const create = vault.create.getMockImplementation()!;
+    vault.create.mockImplementation(async (path, text) => {
+      const file = await create(path, text);
+      vault.read.mockRejectedValueOnce(Error('Offline'));
+      throw Error('Lost acknowledgement for ' + file.path);
+    });
+    await expect(store.publish(second)).rejects.toThrow('Offline');
+    const retryPath = postPath(second.id);
+    expect(retryPath).toMatch(/ \(2\)\.md$/);
+    files.delete(postPath(first.id));
+    contents.delete(postPath(first.id));
+    vault.create.mockImplementation(create);
+    await store.publish(second);
+    expect([...contents.keys()]).toEqual([retryPath]);
   });
 
   it('reads an original Murmur post moved into the Murmline folder', async () => {
     const { store, contents } = fixture();
-    const post = draft('first thought');
+    const post = { id: '1795138832796_first thought', text: 'first thought' };
     await store.publish(post);
     contents.set(postPath(post.id), '<!-- murmur:v1 -->\r\nfirst thought');
     expect(store.list()).toEqual([post.id]);
@@ -63,14 +91,15 @@ describe('vault boundary', () => {
     await store.publish(target);
     const reply = draft('reply', target.id);
     await store.publish(reply);
-    expect(contents.get(postPath(reply.id))).toBe(`<!-- murmline:v2 quote:${target.id} -->\nreply`);
+    expect(contents.get(postPath(reply.id))).toContain(`<!-- murmline:v2 quote:${target.id} -->\nreply`);
     expect(await store.readPost(reply.id)).toEqual({ text: 'reply', quoteId: target.id });
     expect(await store.readPost(target.id)).toEqual({ text: 'original' });
     expect(await store.read(reply.id)).toBe('reply');
     // Self-reference and malformed arguments are invalid but keep the file.
-    contents.set(postPath(reply.id), `<!-- murmline:v2 quote:${reply.id} -->\nreply`);
+    const prefix = contents.get(postPath(reply.id))!.split('<!--')[0];
+    contents.set(postPath(reply.id), prefix + `<!-- murmline:v2 quote:${reply.id} -->\nreply`);
     await expect(store.readPost(reply.id)).rejects.toMatchObject({ reason: 'invalid' });
-    contents.set(postPath(reply.id), '<!-- murmline:v2 quote:bad -->\nreply');
+    contents.set(postPath(reply.id), prefix + '<!-- murmline:v2 quote:bad -->\nreply');
     await expect(store.readPost(reply.id)).rejects.toMatchObject({ reason: 'invalid' });
   });
 
@@ -82,12 +111,12 @@ describe('vault boundary', () => {
     files.clear();
     await store.publish(post);
     await expect(store.publish({ ...post, text: 'two' })).rejects.toMatchObject({ reason: 'occupied' });
-    expect(contents.get(postPath(post.id))).toBe(MARKER + '\none');
+    expect(contents.get(postPath(post.id))).toContain(MARKER + '\none');
   });
 
   it('checks marker, preview, file identity and late invalidation before trash', async () => {
     const { store, vault, contents, files, trashFile } = fixture();
-    const post = draft('before');
+    const post = { id: '1795138832796_before', text: 'before' };
     await store.publish(post);
     const target = store.file(post.id)!;
     const path = postPath(post.id);

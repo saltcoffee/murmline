@@ -26,13 +26,13 @@ it('inserts sync into loaded history and pages the rest without duplicates (A10)
   expect(feed.rows.size).toBe(50);
   const incoming = id(161);
   data.add(incoming);
-  await feed.changed(new Set([postPath(incoming)]));
+  await feed.changed(new Set([incoming]));
   expect([...feed.rows.keys()].sort().reverse()[19]).toBe(incoming);
   await feed.page();
   expect(new Set(feed.rows.keys())).toEqual(data);
   expect(feed.more).toBe(false);
   data.add(id(1));
-  await feed.changed(new Set([postPath(id(1))]));
+  await feed.changed(new Set([id(1)]));
   expect(feed.rows.has(id(1))).toBe(true);
 });
 
@@ -71,7 +71,7 @@ it('loads 10,000 records on demand and accepts record 10,001', async () => {
   while (feed.more) await feed.page();
   expect(new Set(feed.rows.keys())).toEqual(data);
   data.add(id(20_000));
-  await feed.changed(new Set([postPath(id(20_000))]));
+  await feed.changed(new Set([id(20_000)]));
   expect(feed.rows.size).toBe(10_001);
 });
 
@@ -79,14 +79,14 @@ it.each(['folder', 'files'])('paginates a 10,000-post %s import into an open emp
   const { feed, source, data } = fixture(0);
   await feed.page();
   for (let n = 0; n < 10_000; n++) data.add(id(n));
-  const paths = event === 'folder' ? ['Murmline/2026-11'] : [...data].map(postPath);
+  const paths = event === 'folder' ? ['Murmline/2026-11'] : [...data];
   await feed.changed(new Set(paths));
   expect(source.readPost).toHaveBeenCalledTimes(50);
   expect([...feed.rows.keys()]).toEqual([...data].reverse().slice(0, 50));
   expect(feed.more).toBe(true);
 
   // A separate notification for a file already indexed must not eagerly read it.
-  await feed.changed(new Set([postPath(id(1))]));
+  await feed.changed(new Set([id(1)]));
   expect(source.readPost).toHaveBeenCalledTimes(50);
   expect(await feed.page()).toBe(id(9949));
   while (feed.more) await feed.page();
@@ -100,14 +100,14 @@ it('fills unread gaps on both sides of previously loaded records after a bulk sy
   const paths = new Set<string>();
   for (let n = 1; n < 300; n += 2) {
     data.add(id(n));
-    paths.add(postPath(id(n)));
+    paths.add(id(n));
   }
   await feed.changed(paths);
   expect(feed.rows.size).toBe(100);
   expect(feed.rows.has(id(299))).toBe(true);
   // An indexed but unread file can be removed before pagination reaches it.
   data.delete(id(1));
-  await feed.changed(new Set([postPath(id(1))]));
+  await feed.changed(new Set([id(1)]));
   while (feed.more) await feed.page();
   expect(new Set(feed.rows.keys())).toEqual(data);
 });
@@ -172,11 +172,11 @@ it('syncs matching additions and removals while searching and restores the timel
   expect(feed.rows.size).toBe(3);
   const matching = id(100);
   data.add(matching); texts.set(matching, '新想法 #散步');
-  await feed.changed(new Set([postPath(matching)]));
+  await feed.changed(new Set([matching]));
   expect(feed.rows.has(matching)).toBe(true);
   const other = id(101);
   data.add(other); texts.set(other, '无关记录');
-  await feed.changed(new Set([postPath(other)]));
+  await feed.changed(new Set([other]));
   expect(feed.rows.has(other)).toBe(false);
   await feed.search('');
   expect(feed.rows.has(other)).toBe(true);
@@ -199,7 +199,7 @@ it('resolves single-level quote snapshots and degrades on deletion or read failu
   const recovered = feed.rows.get(id(1))!;
   expect('text' in recovered && recovered.quote?.status).toBe('ok');
   data.delete(id(0));
-  await feed.changed(new Set([postPath(id(0))]));
+  await feed.changed(new Set([id(0)]));
   const missing = feed.rows.get(id(1))!;
   expect('text' in missing && missing.quote?.status).toBe('missing');
 });
@@ -293,7 +293,7 @@ it.each(['folder', 'files'])('keeps the active search page bounded across a %s i
   for (let i = 1; i <= 9999; i++) {
     data.add(id(i));
     texts.set(id(i), '#sync');
-    paths.add(postPath(id(i)));
+    paths.add(id(i));
   }
   source.readPost.mockClear();
   await feed.changed(event === 'files' ? paths : new Set(['Murmline/2026-11']));
@@ -308,7 +308,7 @@ it.each(['folder', 'files'])('keeps the active search page bounded across a %s i
   const newest = id(10000);
   data.add(newest);
   texts.set(newest, '#sync');
-  await feed.changed(new Set([postPath(newest)]));
+  await feed.changed(new Set([newest]));
   expect(feed.rows.has(newest)).toBe(true);
   expect(feed.rows.size).toBe(50);
   expect(await feed.page()).toBe(id(9949));
@@ -337,7 +337,7 @@ it('updates a deep search window in place and skips unchanged folder contents', 
   await feed.changed(new Set(['Murmline/2026-11']));
   expect(source.readPost).not.toHaveBeenCalled();
   texts.set(id(9999), '#match edited');
-  await feed.changed(new Set([postPath(id(9999))]));
+  await feed.changed(new Set([id(9999)]));
   expect(source.readPost.mock.calls).toEqual([[id(9999)], [id(9999)]]);
   expect(feed.rows).toBe(window);
   expect(window.get(id(9998))).toBe(unaffected);

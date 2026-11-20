@@ -1,5 +1,5 @@
-import { App, TFile, TFolder } from 'obsidian';
-import { inspect, isPostId, parseHeader, pathId, Post, postPath, ROOT, serialize } from './post';
+import { App, getFrontMatterInfo, parseYaml, TFile, TFolder } from 'obsidian';
+import { inspect, isPostId, parseHeader, pathId, Post, postPath, ROOT, serialize, slugify } from './post';
 
 export class PostError extends Error {
   constructor(readonly reason: 'invalid' | 'occupied', readonly path: string) {
@@ -9,7 +9,30 @@ export class PostError extends Error {
 
 export type ReadPost = { text: string; quoteId?: string };
 
+export const CREATED = 'murmline-created';
+
 export class PostStore {
+  private readonly stamps = new WeakMap<TFile, number>();
+
+  // The vault emits create before its metadata index is ready. Remember local
+  // writes immediately, and keep the last known stamp for delete/rename events.
+  idAt(file: TFile, path = file.path) {
+    if (!/^Murmline\/\d{4}-\d{2}\/\d{4}\./.test(path)) return pathId(path);
+    const stamp = this.stamps.get(file) ?? this.app.metadataCache.getFileCache(file)?.frontmatter?.[CREATED];
+    const id = pathId(path, stamp);
+    if (id) this.stamps.set(file, Number(id.slice(0, 13)));
+    return id;
+  }
+
+  metadataChanged(file: TFile, stamp: unknown) {
+    const previous = pathId(file.path, this.stamps.get(file));
+    const current = pathId(file.path, stamp);
+    if (previous === current) return [];
+    if (current) this.stamps.set(file, Number(current.slice(0, 13)));
+    else this.stamps.delete(file);
+    return [previous, current].filter((id): id is string => !!id);
+  }
+
   constructor(readonly app: App) {}
 
   list(): string[] {
@@ -20,7 +43,7 @@ export class PostStore {
     for (const month of folder.children) {
       if (!(month instanceof TFolder) || !/^\d{4}-\d\d$/.test(month.name)) continue;
       for (const child of month.children) {
-        const id = child instanceof TFile && pathId(child.path);
+        const id = child instanceof TFile && this.idAt(child);
         if (id) ids.push(id);
       }
     }
@@ -29,15 +52,20 @@ export class PostStore {
 
   file(id: string) {
     const file = this.app.vault.getAbstractFileByPath(postPath(id));
-    return file instanceof TFile ? file : null;
+    return file instanceof TFile && this.idAt(file) === id ? file : null;
   }
 
   async readPost(id: string, fresh = false): Promise<ReadPost | null> {
     const file = this.file(id);
     if (!file) return null;
     const vault = this.app.vault;
-    const raw = fresh ? await vault.read(file) : await vault.cachedRead(file);
+    let raw = fresh ? await vault.read(file) : await vault.cachedRead(file);
     if (this.file(id) !== file) return null;
+    if (id[13] === '@') {
+      const info = getFrontMatterInfo(raw);
+      if (!info.exists || parseYaml(info.frontmatter)?.[CREATED] !== Number(id.slice(0, 13))) return null;
+      raw = raw.slice(info.contentStart);
+    }
     const newline = raw.indexOf('\n');
     const header = (newline < 0 ? raw : raw.slice(0, newline)).replace(/\r$/, '');
     const parsed = parseHeader(header);
@@ -72,14 +100,37 @@ export class PostStore {
     if (!body.valid) throw new PostError('invalid', path);
     if (post.quoteId !== undefined && (!isPostId(post.quoteId) || post.quoteId === post.id))
       throw new PostError('invalid', path);
-    const data = serialize(body.text, post.quoteId);
+    const dated = post.id[13] === '@';
+    const stamp = Number(post.id.slice(0, 13));
+    const prefix = dated ? '---\n' + CREATED + ': ' + stamp + '\n---\n' : '';
+    const data = prefix + serialize(body.text, post.quoteId);
     await this.ensureFolder(ROOT);
     await this.ensureFolder(path.slice(0, path.lastIndexOf('/')));
-    try { await this.app.vault.create(path, data); }
-    catch (error) {
-      const file = this.file(post.id);
-      if (!file) throw error;
-      if (await this.app.vault.read(file) !== data) throw new PostError('occupied', path);
+    const baseId = dated ? post.id.slice(0, post.id.indexOf('_') + 1) + slugify(body.text) : post.id;
+    let id = post.id;
+    for (let n = 2; ; id = baseId + ' (' + n++ + ')') {
+      // Keep the attempted destination if a write succeeds but its acknowledgement fails.
+      post.id = id;
+      const candidate = postPath(id);
+      let file;
+      try { file = await this.app.vault.create(candidate, data); }
+      catch (error) {
+        const existing = this.app.vault.getAbstractFileByPath(candidate);
+        if (!existing) throw error;
+        if (!(existing instanceof TFile)) {
+          if (dated) continue;
+          throw new PostError('occupied', candidate);
+        }
+        const raw = await this.app.vault.read(existing);
+        if (raw !== data) {
+          if (!dated || this.idAt(existing) === id || raw.startsWith(prefix))
+            throw new PostError('occupied', candidate);
+          continue;
+        }
+        file = existing;
+      }
+      if (dated) this.stamps.set(file, stamp);
+      return;
     }
   }
 

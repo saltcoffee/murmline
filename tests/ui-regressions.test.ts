@@ -98,6 +98,18 @@ async function timeline(size: number) {
   return { view, root, store, keys, older: root.find(el => el.cls === 'murmline-older')! };
 }
 
+it('keeps input hints and accessible names without host hover tooltips', async () => {
+  const { root } = await timeline(1);
+  for (const hint of [lang.t.placeholder, lang.t.searchPlaceholder]) {
+    const field = root.find(el => el.attributes.get('placeholder') === hint)!;
+    const id = field.attributes.get('id');
+    expect(id).toBeTruthy();
+    expect(root.find(el => el.attributes.get('for') === id)?.textContent).toBeTruthy();
+    expect(field.attributes.has('aria-label')).toBe(false);
+    expect(field.attributes.has('title')).toBe(false);
+  }
+});
+
 it.each([51, 101])('keeps keyboard focus through pagination with %i posts', async size => {
   const {root, store, keys, older} = await timeline(size);
   const gate = deferred<{ text: string }>();
