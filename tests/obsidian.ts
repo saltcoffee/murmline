@@ -18,12 +18,15 @@ export class Modal {
 export class Scope { register() {} }
 export class ItemView {
   contentEl = new TestElement(new TestDocument());
+  domEvents: Array<{ target: unknown; type: string; handler: () => void }> = [];
   app = {
     workspace: { onLayoutReady(callback: () => void) { callback(); } },
     vault: { on() {} },
     metadataCache: { on() {} },
   };
-  registerDomEvent() {}
+  registerDomEvent(target: unknown, type: string, handler: () => void) {
+    this.domEvents.push({ target, type, handler });
+  }
   registerEvent() {}
   registerInterval() {}
 }
@@ -34,6 +37,7 @@ export function getFrontMatterInfo(raw: string) {
   return { exists: !!match, contentStart: match?.[0].length ?? 0, frontmatter: match?.[1] ?? '' };
 }
 export function parseYaml(source: string) {
+  if (/:\s*\[[^\]]*$/m.test(source)) throw new Error('Invalid YAML');
   const match = /^murmline-created: (\d+)$/m.exec(source);
   return match ? { 'murmline-created': Number(match[1]) } : {};
 }

@@ -244,3 +244,117 @@ it('keeps the newest draft preview through out-of-order reads, invalid markers a
   await moved.promise;
   expect(view['quoting']?.missing).toBe(true);
 });
+
+it('stacks quote preview label and text inside a dedicated body wrapper', async () => {
+  const { view, root, keys } = await timeline(1);
+  view['startQuote']({ id: keys[0]!, text: 'preview text' });
+  const bar = root.find(el => el.cls === 'murmline-quote-bar')!;
+  const body = bar.children.find(el => el.cls === 'murmline-quote-bar-body');
+  expect(body).toBeDefined();
+  expect(body?.find(el => el.cls === 'murmline-quote-bar-label')).toBeDefined();
+  expect(body?.find(el => el.cls === 'murmline-quote-bar-text')?.textContent).toBe('preview text');
+  expect(bar.children.some(el => el.cls.includes('murmline-quote-cancel'))).toBe(true);
+});
+
+it('hides the earlier button while initial search is loading and preserves search page on retry', async () => {
+  const { view, root, store, older } = await timeline(120);
+  const gate = deferred<{ text: string }>();
+  store.readPost.mockImplementationOnce(() => gate.promise);
+  const v = view as unknown as {
+    searchInput: TestElement;
+    applySearch: (value: string) => void;
+    olderAction: (keyboard: boolean) => void;
+    pageError: string;
+    render: () => void;
+  };
+  v.searchInput.value = '00000000';
+  v.applySearch('00000000');
+  expect(older.hidden).toBe(true);
+  older.click();
+  gate.resolve({ text: '00000000' });
+  await view['serial'];
+  expect(view['feed'].rows.size).toBe(50);
+  expect(older.hidden).toBe(false);
+
+  // When a page error occurs during active search, retry advances the page rather than resetting to page 1.
+  v.pageError = lang.t.loadError;
+  v.render();
+  v.olderAction(false);
+  await view['serial'];
+  expect(view['feed'].rows.size).toBe(100);
+
+  // When a search has 0 results and a page error, do not show the contradictory "No matching thoughts." status.
+  v.searchInput.value = 'absent';
+  v.applySearch('absent');
+  await view['serial'];
+  expect(view['feed'].rows.size).toBe(0);
+  const searchStatus = root.find(el => el.cls === 'murmline-search-status')!;
+  expect(searchStatus.textContent).toBe(lang.t.noResults);
+  v.pageError = lang.t.loadError;
+  v.render();
+  expect(searchStatus.textContent).toBe('');
+
+  // When switching from an active search to a new query fails in begin(), retry runs the new query.
+  const list = vi.spyOn(store, 'list');
+  list.mockImplementationOnce(() => { throw new Error('Unavailable'); });
+  v.searchInput.value = '00000000';
+  v.applySearch('00000000');
+  expect(view['feed'].searching).toBe(true);
+  expect(view['feed'].rows.size).toBe(0);
+  v.olderAction(false);
+  await view['serial'];
+  expect(view['feed'].rows.size).toBe(50);
+});
+
+it('refreshes quote card timestamps when the clock changes, toggles tags case-insensitively, and resets composing on focusout', async () => {
+  vi.stubEnv('TZ', 'UTC');
+  const a = key(start);
+  const b = key(start + 1);
+  const data: Record<string, { text: string; quoteId?: string }> = {
+    [a]: { text: 'origin #Todo' },
+    [b]: { text: 'reply #todo', quoteId: a },
+  };
+  const store = { list: () => [a, b], file: () => ({ stat: { mtime: 1, size: 1 } }), readPost: vi.fn(async (id: string) => data[id] ?? null) };
+  const view = new TimelineView({} as WorkspaceLeaf, store as unknown as PostStore, lang);
+  await view.onOpen();
+  const root = view.contentEl as unknown as TestElement;
+  await vi.waitFor(() => expect(root.find(el => el.cls === 'murmline-quote-meta')).toBeDefined());
+  const quoteMeta = root.find(el => el.cls === 'murmline-quote-meta')!;
+  expect(quoteMeta.textContent).toContain('16:05');
+
+  vi.stubEnv('TZ', 'Asia/Shanghai');
+  view['checkClock']();
+  expect(quoteMeta.textContent).toContain('00:05');
+
+  // Toggle tag case-insensitively, and ignore clicks when text inside the tag is actively selected.
+  const tag = root.find(el => el.cls === 'murmline-tag')!;
+  const win = root.ownerDocument.defaultView as unknown as {
+    getSelection?: () => { isCollapsed: boolean; toString: () => string; anchorNode: unknown; focusNode: unknown };
+  };
+  win.getSelection = () => ({ isCollapsed: false, toString: () => '#todo', anchorNode: tag, focusNode: tag });
+  tag.click();
+  expect(view['searchInput'].value).toBe('');
+  win.getSelection = undefined;
+  view['toggleTag']('#Todo');
+  expect(view['searchInput'].value).toBe('#Todo');
+  view['toggleTag']('#todo');
+  expect(view['searchInput'].value).toBe('');
+
+  // Clear stuck composing state on focusout.
+  const events = (view as unknown as { domEvents: Array<{ type: string; handler: () => void }> }).domEvents;
+  events.find(e => e.type === 'compositionstart')?.handler();
+  expect(view['composing']).toBe(true);
+  events.find(e => e.type === 'focusout')?.handler();
+  expect(view['composing']).toBe(false);
+
+  // Repeated reveal cancels the previous highlight timer instead of leaking/racing.
+  const cleared: number[] = [];
+  let nextTimer = 10;
+  root.ownerDocument.defaultView.setTimeout = () => ++nextTimer;
+  root.ownerDocument.defaultView.clearTimeout = (id?: number) => { if (id !== undefined) cleared.push(id); };
+  view['list'].reveal(a);
+  view['list'].reveal(a);
+  expect(cleared).toEqual([11]);
+  await view.onClose();
+  expect(cleared).toEqual([11, 12]);
+});

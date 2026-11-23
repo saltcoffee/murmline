@@ -13,7 +13,8 @@ type Handlers = {
 
 type Item = {
   el: HTMLElement; divider: HTMLElement; time: HTMLElement; body: HTMLElement;
-  action: HTMLButtonElement; quote?: HTMLElement; row?: Row; dateKey?: string; clock?: string;
+  action: HTMLButtonElement; quote?: HTMLElement; quoteMeta?: HTMLElement;
+  highlightTimer?: number; row?: Row; dateKey?: string; clock?: string;
 };
 
 export class TimelineList {
@@ -47,7 +48,11 @@ export class TimelineList {
       }
     }
     for (const [id, item] of this.items) {
-      if (!rows.has(id)) { item.el.remove(); this.items.delete(id); }
+      if (!rows.has(id)) {
+        this.clearHighlight(item);
+        item.el.remove();
+        this.items.delete(id);
+      }
     }
     let next = this.container.firstElementChild;
     let previousDay = '';
@@ -63,10 +68,11 @@ export class TimelineList {
       const key = dayKey(date);
       const divider = key !== previousDay;
       const time = localTime(date);
-      if ('text' in row && (item.row !== row || item.clock !== clock)) {
+      const clockChanged = item.clock !== clock;
+      if ('text' in row && (item.row !== row || clockChanged)) {
         item.action.setAttribute('aria-label', this.lang.t.more + ' · ' + time);
       }
-      if (item.clock !== clock || item.divider.hidden === divider || item.dateKey !== key) {
+      if (clockChanged || item.divider.hidden === divider || item.dateKey !== key) {
         item.divider.hidden = !divider;
         if (divider) item.divider.setText(dayLabel(date, now, this.lang));
         item.time.setText(time);
@@ -75,7 +81,12 @@ export class TimelineList {
         item.clock = clock;
       }
       previousDay = key;
-      if (item.row === row) continue;
+      if (item.row === row) {
+        if (clockChanged && 'text' in row && row.quote?.status === 'ok' && item.quoteMeta) {
+          item.quoteMeta.setText(this.quoteLabel(row.quote.id, now));
+        }
+        continue;
+      }
       item.row = row;
       const { t } = this.lang;
       if ('text' in row) {
@@ -84,7 +95,7 @@ export class TimelineList {
         setIcon(item.action, 'ellipsis');
         item.action.title = t.more;
         item.action.onclick = () => this.handlers.menu({ id, text: row.text, quoteId: row.quote?.id }, item.action);
-        this.renderQuote(item, row);
+        this.renderQuote(item, row, now);
       } else {
         item.body.setText([t.readError, errorDetail(row.error, t)].filter(Boolean).join(' '));
         item.action.setText(t.retry);
@@ -93,6 +104,7 @@ export class TimelineList {
         item.action.onclick = () => this.handlers.retry(id);
         item.quote?.remove();
         item.quote = undefined;
+        item.quoteMeta = undefined;
       }
     }
     if (active && this.container.contains(active) && active !== this.container.ownerDocument.activeElement)
@@ -100,32 +112,40 @@ export class TimelineList {
     if (anchor) this.scroll.scrollTop += anchor.el.getBoundingClientRect().top - offset;
   }
 
+  private hasSelection(el: HTMLElement) {
+    const selection = this.container.ownerDocument.defaultView?.getSelection?.();
+    if (!selection || selection.isCollapsed || !selection.toString()) return false;
+    return (!!selection.anchorNode && el.contains(selection.anchorNode))
+      || (!!selection.focusNode && el.contains(selection.focusNode));
+  }
+
   private fillBody(body: HTMLElement, text: string) {
     body.empty();
     for (const token of tokenizeBody(text)) {
       if (token.type === 'tag') {
         const tag = body.createEl('button', { cls: 'murmline-tag', text: token.value, attr: { type: 'button' } });
-        tag.onclick = () => this.handlers.tag(token.value);
+        tag.onclick = () => { if (!this.hasSelection(tag)) this.handlers.tag(token.value); };
       } else body.createSpan({ text: token.value });
     }
   }
 
-  private quoteLabel(id: string) {
+  private quoteLabel(id: string, now: Date) {
     const date = createdAt(id);
-    return dayLabel(date, new Date(), this.lang) + ' ' + localTime(date);
+    return dayLabel(date, now, this.lang) + ' ' + localTime(date);
   }
 
-  private renderQuote(item: Item, row: { id: string; text: string; quote?: QuoteSnapshot }) {
+  private renderQuote(item: Item, row: { id: string; text: string; quote?: QuoteSnapshot }, now: Date) {
     item.quote?.remove();
     item.quote = undefined;
+    item.quoteMeta = undefined;
     const quote = row.quote;
     if (!quote) return;
     const { t } = this.lang;
     if (quote.status === 'ok') {
       const card = item.el.createEl('button', { cls: 'murmline-quote' , attr: { type: 'button' } });
-      card.createDiv({ cls: 'murmline-quote-meta', text: this.quoteLabel(quote.id) });
+      item.quoteMeta = card.createDiv({ cls: 'murmline-quote-meta', text: this.quoteLabel(quote.id, now) });
       card.createDiv({ cls: 'murmline-quote-text', text: quote.text });
-      card.onclick = () => this.handlers.quote(quote.id);
+      card.onclick = () => { if (!this.hasSelection(card)) this.handlers.quote(quote.id); };
       item.quote = card;
     } else if (quote.status === 'missing') {
       const card = item.el.createDiv({ cls: 'murmline-quote is-missing' });
@@ -140,6 +160,13 @@ export class TimelineList {
     }
   }
 
+  private clearHighlight(item: Item) {
+    if (item.highlightTimer !== undefined) {
+      this.container.ownerDocument.defaultView?.clearTimeout(item.highlightTimer);
+      item.highlightTimer = undefined;
+    }
+  }
+
   focus(id: string, preventScroll = true) {
     const item = this.items.get(id);
     item?.action.focus({ preventScroll });
@@ -149,10 +176,23 @@ export class TimelineList {
   reveal(id: string) {
     const item = this.items.get(id);
     if (!item) return false;
+    this.clearHighlight(item);
     item.el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    item.el.classList.remove('is-highlighted');
+    void item.el.offsetWidth;
     item.el.classList.add('is-highlighted');
-    setTimeout(() => item.el.classList.remove('is-highlighted'), 1200);
+    const win = this.container.ownerDocument.defaultView;
+    if (win) {
+      item.highlightTimer = win.setTimeout(() => {
+        item.highlightTimer = undefined;
+        item.el.classList.remove('is-highlighted');
+      }, 1200);
+    }
     item.action.focus({ preventScroll: true });
     return true;
+  }
+
+  clear() {
+    for (const item of this.items.values()) this.clearHighlight(item);
   }
 }

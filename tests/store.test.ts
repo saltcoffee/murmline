@@ -144,4 +144,41 @@ describe('vault boundary', () => {
     expect(await remove()).toBe('deleted');
     expect(store.file(post.id)).toBeNull();
   });
+
+  it('handles case-insensitive filename collisions by advancing to a numbered suffix', async () => {
+    const { store, vault, files } = fixture();
+    const first = draft('Hello');
+    await store.publish(first);
+    const baseCreate = vault.create.getMockImplementation()!;
+    vault.create.mockImplementation(async (path, text) => {
+      const lower = path.toLowerCase();
+      if ([...files.keys()].some(existing => existing.toLowerCase() === lower)) throw Error('File already exists');
+      return baseCreate(path, text);
+    });
+    const second = draft('hello');
+    await store.publish(second);
+    expect(postPath(second.id)).toMatch(/_hello \(2\)\.md$/);
+    expect(store.list()).toEqual([first.id, second.id]);
+    expect(await store.read(second.id)).toBe('hello');
+  });
+
+  it('clears stale cached stamps outside Murmline and treats broken YAML frontmatter as non-post', async () => {
+    const { store, contents } = fixture();
+    const post = draft('moved');
+    await store.publish(post);
+    const file = store.file(post.id)!;
+    const originalPath = file.path;
+
+    // Move out of Murmline, rewrite frontmatter, then move back.
+    file.path = 'Notes/moved.md';
+    const newStamp = Number(post.id.slice(0, 13)) + 5000;
+    contents.set(originalPath, `---\nmurmline-created: ${newStamp}\n---\n${MARKER}\nmoved`);
+    expect(store.metadataChanged(file, newStamp)).toEqual([]);
+    file.path = originalPath;
+    expect(store.idAt(file)).toBe(newStamp + post.id.slice(13));
+
+    // Malformed YAML frontmatter returns null rather than throwing a read error.
+    contents.set(originalPath, `---\nmurmline-created: [broken\n---\n${MARKER}\nmoved`);
+    expect(await store.readPost(newStamp + post.id.slice(13), true)).toBeNull();
+  });
 });

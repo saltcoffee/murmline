@@ -233,7 +233,7 @@ export class Feed {
       this.resetSearch();
       return { token: this.token, searching: false };
     }
-    const ids = this.store.list().sort();
+    const ids = [...this.store.list()].sort();
     this.token++;
     this.searchMode = true;
     this.query = query;

@@ -1,4 +1,4 @@
-import { countGraphemes } from 'unicode-segmenter/grapheme';
+import { countGraphemes, splitGraphemes } from 'unicode-segmenter/grapheme';
 import type { Language } from './i18n';
 
 export const LIMIT = 140;
@@ -33,6 +33,7 @@ export type Post = { id: string; text: string; quoteId?: string };
 // safe inside wikilinks. Reserved characters are collapsed to single spaces,
 // the result is trimmed and cut to a short grapheme budget.
 const MAX_SLUG = 20;
+const MAX_SLUG_BYTES = 180;
 let lastStamp = 0;
 
 // Keep ids unique within one process even for identical text created in the
@@ -43,16 +44,28 @@ function nextStamp() {
   return lastStamp;
 }
 
-function clampGraphemes(text: string, max: number) {
-  if (segmenter) {
-    const parts: string[] = [];
-    for (const { segment } of segmenter.segment(text)) {
-      parts.push(segment);
-      if (parts.length >= max) break;
-    }
-    return parts.join('');
+function utf8Bytes(text: string) {
+  let bytes = 0;
+  for (const char of text) {
+    const code = char.codePointAt(0)!;
+    bytes += code < 0x80 ? 1 : code < 0x800 ? 2 : code < 0x10000 ? 3 : 4;
   }
-  return Array.from(text).slice(0, max).join('');
+  return bytes;
+}
+
+function clampGraphemes(text: string, max: number, maxBytes: number) {
+  const parts: string[] = [];
+  let bytes = 0;
+  const segments = segmenter
+    ? (function* () { for (const { segment } of segmenter.segment(text)) yield segment; })()
+    : splitGraphemes(text);
+  for (const segment of segments) {
+    const size = utf8Bytes(segment);
+    if (parts.length >= max || bytes + size > maxBytes) break;
+    parts.push(segment);
+    bytes += size;
+  }
+  return parts.join('');
 }
 
 export function slugify(text: string) {
@@ -62,7 +75,7 @@ export function slugify(text: string) {
     sanitized += code < 0x20 || code === 0x7f || FORBIDDEN_ID_CHARS.has(char) ? ' ' : char;
   }
   const collapsed = sanitized.replace(/\s+/gu, ' ').trim();
-  return clampGraphemes(collapsed, MAX_SLUG).trim().replace(/[. ]+$/u, '') || 'post';
+  return clampGraphemes(collapsed, MAX_SLUG, MAX_SLUG_BYTES).trim().replace(/[. ]+$/u, '') || 'post';
 }
 
 export function draft(text: string, quoteId?: string): Post {
@@ -127,7 +140,7 @@ export function serialize(text: string, quoteId?: string) {
 const TAG_CHAR = /[\p{L}\p{N}_/-]/u;
 const TAG_RUN = /^[\p{L}\p{N}_/-]+/u;
 const ALL_DIGITS = /^\p{N}+$/u;
-const TAG_BREAK = new Set('，。！？；：（）【】「」『』、'.split(''));
+const TAG_BREAK = new Set('，。！？；：（）【】「」『』、“”‘’《》('.split(''));
 
 export function isValidTagBody(body: string) {
   if (!body) return false;
@@ -156,7 +169,7 @@ export function tokenizeBody(text: string): Token[] {
       tokens.push({ type: 'tag', value: '#' + body });
       last = end;
       i = end;
-    } else i = end > i ? end : i + 1;
+    } else i = end;
   }
   if (last < text.length) tokens.push({ type: 'text', value: text.slice(last) });
   return tokens;

@@ -59,7 +59,12 @@
 .murmline-view [hidden] { display: none !important; }
 .murmline-meta { justify-content: space-between; }
 .murmline-action { min-width: 30px; min-height: 30px; }
-.murmline-body, .murmline-preview { white-space: pre-wrap; overflow-wrap: anywhere; }
+.murmline-body, .murmline-preview {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  user-select: text;
+  -webkit-user-select: text;
+}
 .murmline-older { display: block; margin: 24px auto 0; }
 @media (pointer: coarse) {
   .murmline-action { min-width: 44px; min-height: 44px; }
@@ -82,6 +87,10 @@
   border-radius: var(--radius-s);
   background: var(--background-secondary);
 }
+.murmline-view .murmline-quote-bar-body {
+  flex: 1;
+  min-width: 0;
+}
 .murmline-view .murmline-quote-bar-label {
   font-size: var(--font-small);
   color: var(--text-muted);
@@ -90,6 +99,8 @@
   margin-block-start: 2px;
   font-size: var(--font-small);
   color: var(--text-normal);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
   display: -webkit-box;
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 2;
@@ -120,6 +131,8 @@
 .murmline-view .murmline-quote-text {
   white-space: pre-wrap;
   overflow-wrap: anywhere;
+  user-select: text;
+  -webkit-user-select: text;
   color: var(--text-normal);
   display: -webkit-box;
   -webkit-box-orient: vertical;
@@ -130,6 +143,7 @@
 
 .murmline-view .murmline-tag {
   display: inline;
+  height: auto;
   padding: 0 4px;
   border: none;
   border-radius: var(--radius-s);
@@ -138,6 +152,8 @@
   color: var(--text-accent);
   font: inherit;
   line-height: inherit;
+  user-select: text;
+  -webkit-user-select: text;
   cursor: pointer;
 }
 .murmline-view .murmline-tag:hover,
