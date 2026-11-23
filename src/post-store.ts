@@ -27,9 +27,9 @@ export class PostStore {
   metadataChanged(file: TFile, stamp: unknown) {
     const previous = pathId(file.path, this.stamps.get(file));
     const current = pathId(file.path, stamp);
-    if (previous === current) return [];
-    if (current) this.stamps.set(file, Number(current.slice(0, 13)));
+    if (current && current[13] === '@') this.stamps.set(file, Number(current.slice(0, 13)));
     else this.stamps.delete(file);
+    if (previous === current) return [];
     return [previous, current].filter((id): id is string => !!id);
   }
 
@@ -63,7 +63,11 @@ export class PostStore {
     if (this.file(id) !== file) return null;
     if (id[13] === '@') {
       const info = getFrontMatterInfo(raw);
-      if (!info.exists || parseYaml(info.frontmatter)?.[CREATED] !== Number(id.slice(0, 13))) return null;
+      if (!info.exists) return null;
+      let frontmatter: Record<string, unknown> | null;
+      try { frontmatter = parseYaml(info.frontmatter) as Record<string, unknown> | null; }
+      catch { return null; }
+      if (frontmatter?.[CREATED] !== Number(id.slice(0, 13))) return null;
       raw = raw.slice(info.contentStart);
     }
     const newline = raw.indexOf('\n');
@@ -83,6 +87,17 @@ export class PostStore {
   async read(id: string, fresh = false): Promise<string | null> {
     const post = await this.readPost(id, fresh);
     return post ? post.text : null;
+  }
+
+  private findExisting(path: string) {
+    const exact = this.app.vault.getAbstractFileByPath(path);
+    if (exact) return exact;
+    const slash = path.lastIndexOf('/');
+    if (slash < 0) return null;
+    const parent = this.app.vault.getAbstractFileByPath(path.slice(0, slash));
+    if (!(parent instanceof TFolder)) return null;
+    const target = path.slice(slash + 1).normalize('NFC').toLowerCase();
+    return parent.children.find(child => child.name.normalize('NFC').toLowerCase() === target) ?? null;
   }
 
   private async ensureFolder(path: string) {
@@ -115,9 +130,9 @@ export class PostStore {
       let file;
       try { file = await this.app.vault.create(candidate, data); }
       catch (error) {
-        const existing = this.app.vault.getAbstractFileByPath(candidate);
+        const existing = this.findExisting(candidate);
         if (!existing) throw error;
-        if (!(existing instanceof TFile)) {
+        if (!(existing instanceof TFile) || existing.path !== candidate) {
           if (dated) continue;
           throw new PostError('occupied', candidate);
         }

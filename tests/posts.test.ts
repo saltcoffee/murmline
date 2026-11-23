@@ -51,6 +51,22 @@ describe('content-derived file names', () => {
     expect(isPostId('1794969720000_9ff8b1a2-7f60-4d65-9a5d-4485b82f80d')).toBe(true);
     expect(isPostId('1794969720000_bad/id')).toBe(false);
   });
+
+  it('bounds slug byte length for multi-byte emoji and keeps grapheme clusters intact without Intl.Segmenter', async () => {
+    const emojiSlug = slugify('👨‍👩‍👧‍👦'.repeat(20));
+    expect(Buffer.byteLength(emojiSlug, 'utf8')).toBeLessThanOrEqual(180);
+    expect(emojiSlug.length).toBeGreaterThan(0);
+    vi.stubGlobal('Intl', { ...Intl, Segmenter: undefined });
+    try {
+      vi.resetModules();
+      const mod = await import('../src/post');
+      expect(mod.slugify('a'.repeat(19) + '👨‍👩‍👧‍👦')).toBe('a'.repeat(19) + '👨‍👩‍👧‍👦');
+      expect(mod.slugify('a'.repeat(19) + 'e\u0301x')).toBe('a'.repeat(19) + 'e\u0301');
+    } finally {
+      vi.unstubAllGlobals();
+      vi.resetModules();
+    }
+  });
 });
 
 it('selects the host language for both commands and feedback', () => {
@@ -75,9 +91,10 @@ it('groups A12 by the device calendar and labels yesterday across years', () => 
 
 describe('tag tokens and search', () => {
   it('renders only valid tags and preserves the rest as text (A19)', () => {
-    const source = 'https://a.com#top #2026 散步，#灵感 （#日常/晨间）';
+    const source = 'https://a.com#top [link](https://a.com#top) #2026 散步，#灵感 （#日常/晨间） (#work) “#想法” 《#书单》';
     const tokens = tokenizeBody(source);
-    expect(tokens.filter(token => token.type === 'tag').map(token => token.value)).toEqual(['#灵感', '#日常/晨间']);
+    expect(tokens.filter(token => token.type === 'tag').map(token => token.value))
+      .toEqual(['#灵感', '#日常/晨间', '#work', '#想法', '#书单']);
     expect(tokens.map(token => token.value).join('')).toBe(source);
   });
 

@@ -1,6 +1,6 @@
 {
   "name": "murmline",
-  "version": "0.2.2",
+  "version": "0.2.3",
   "description": "A private timeline for short thoughts in Obsidian.",
   "author": "gua",
   "type": "module",

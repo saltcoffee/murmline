@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.2.3
+
+### English
+
+- Fix the quote preview bar layout so the timestamp and preview text stack vertically and wrap cleanly on narrow screens.
+- Fix same-day filename collisions that differ only in letter case on macOS, Windows, and iOS, and cap filename slug byte length for emoji-heavy posts.
+- Allow selecting and copying timeline text and `#tags` directly, recognize tags after `(` and CJK quotation marks, and toggle `#tags` case-insensitively.
+- Fix search loading and retry edge cases, refresh quote card timestamps across midnight or timezone changes, clear stale frontmatter/IME states, and avoid highlight timer races.
+
+### 简体中文
+
+- 修复引用预览条布局，使时间与预览正文垂直排布并在窄屏下正常换行。
+- 修复 macOS、Windows 和 iOS 上同日仅大小写不同的文件名冲突导致发布失败的问题，并限制多字节表情摘要的文件名字节长度。
+- 修复时间线正文、引用卡片和 `#标签` 无法直接拖选复制的问题；支持在英文括号 `(` 和中文引号/书名号后识别 `#标签`，并忽略大小写切换标签筛选。
+- 修复搜索加载中误显「加载更早记录」及分页重试回退的问题，修复跨午夜/切换时区后引用卡片时间不刷新、无效 YAML / 移出目录后的时间戳缓存残留、输入法组合态卡死与高亮定时器竞争问题。
+
 ## 0.2.2
 
 ### English

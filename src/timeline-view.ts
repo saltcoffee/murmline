@@ -49,6 +49,7 @@ export class TimelineView extends ItemView {
   private clock = '';
   private searchTimer?: number;
   private searchLoading = false;
+  private searchError = false;
 
   constructor(leaf: WorkspaceLeaf, private store: PostStore, private lang: Language) {
     super(leaf);
@@ -92,8 +93,9 @@ export class TimelineView extends ItemView {
 
     this.quoteBar = composer.createDiv({ cls: 'murmline-quote-bar' });
     this.quoteBar.hidden = true;
-    this.quoteBarLabel = this.quoteBar.createDiv({ cls: 'murmline-quote-bar-label' });
-    this.quoteBarText = this.quoteBar.createDiv({ cls: 'murmline-quote-bar-text' });
+    const quoteBarBody = this.quoteBar.createDiv({ cls: 'murmline-quote-bar-body' });
+    this.quoteBarLabel = quoteBarBody.createDiv({ cls: 'murmline-quote-bar-label' });
+    this.quoteBarText = quoteBarBody.createDiv({ cls: 'murmline-quote-bar-text' });
     this.quoteBarCancel = this.quoteBar.createEl('button', {
       cls: 'clickable-icon murmline-quote-cancel', attr: { 'aria-label': t.cancelQuote, type: 'button' },
     });
@@ -116,6 +118,9 @@ export class TimelineView extends ItemView {
     };
     this.registerDomEvent(column, 'compositionstart', () => { this.composing = true; });
     this.registerDomEvent(column, 'compositionend', () => { this.composing = false; this.updateComposer(); });
+    this.registerDomEvent(column, 'focusout', () => {
+      if (this.composing) { this.composing = false; this.updateComposer(); }
+    });
     this.send.onclick = () => void this.publish();
     this.updateComposer();
 
@@ -223,7 +228,7 @@ export class TimelineView extends ItemView {
   }
 
   private page(keyboard = false) {
-    if (this.paging) return;
+    if (this.paging || this.searchLoading) return;
     const token = this.feed.session;
     this.paging = true;
     this.pageError = '';
@@ -240,7 +245,10 @@ export class TimelineView extends ItemView {
   }
 
   private olderAction(keyboard: boolean) {
-    if (this.pageError && this.searchInput.value.trim()) { this.applySearch(this.searchInput.value); return; }
+    if (this.pageError && this.searchError && this.searchInput.value.trim()) {
+      this.applySearch(this.searchInput.value);
+      return;
+    }
     this.page(keyboard);
   }
 
@@ -258,7 +266,7 @@ export class TimelineView extends ItemView {
     if (this.status.textContent !== message) this.status.setText(message);
     this.renderSearch(searching, loading);
     if (!this.paging) {
-      const hide = !this.pageError && (!this.ready || !this.feed.more);
+      const hide = this.searchLoading || (!this.pageError && (!this.ready || !this.feed.more));
       if (this.pageFocus !== undefined && this.contentEl.ownerDocument.activeElement === this.older) {
         if (this.pageFocus) this.list.focus(this.pageFocus, false);
         else this.focusComposer();
@@ -275,7 +283,7 @@ export class TimelineView extends ItemView {
     const hasContent = this.feed.rows.size > 0 || (this.ready && this.feed.more);
     this.searchBar.hidden = !searching && !hasContent;
     let status = '';
-    if (searching) {
+    if (searching && !this.pageError) {
       if (loading) status = t.searching;
       else if (!this.feed.rows.size) status = t.noResults;
     }
@@ -302,6 +310,7 @@ export class TimelineView extends ItemView {
 
   private applySearch(value: string) {
     this.pageError = '';
+    this.searchError = false;
     // An immediate apply (Esc, clear, tag click) must cancel any pending debounce,
     // otherwise the old keyword re-applies after the box was cleared.
     if (this.searchTimer !== undefined) {
@@ -312,6 +321,7 @@ export class TimelineView extends ItemView {
     try { result = this.feed.begin(value); }
     catch (error) {
       this.searchLoading = false;
+      this.searchError = true;
       this.pageError = [this.lang.t.loadError, errorDetail(error, this.lang.t)].filter(Boolean).join(' ');
       this.render();
       return;
@@ -329,7 +339,7 @@ export class TimelineView extends ItemView {
   }
 
   private toggleTag(value: string) {
-    const next = this.searchInput.value.trim() === value ? '' : value;
+    const next = this.searchInput.value.trim().toLowerCase() === value.toLowerCase() ? '' : value;
     this.searchInput.value = next;
     this.updateSearchClear();
     this.searchInput.focus();
@@ -521,6 +531,7 @@ export class TimelineView extends ItemView {
       this.contentEl.ownerDocument.defaultView?.clearTimeout(this.searchTimer);
       this.searchTimer = undefined;
     }
+    this.list?.clear();
     this.modal?.closeWithView();
     this.contentEl.empty();
   }
