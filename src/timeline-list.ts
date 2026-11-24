@@ -124,7 +124,9 @@ export class TimelineList {
     for (const token of tokenizeBody(text)) {
       if (token.type === 'tag') {
         const tag = body.createEl('button', { cls: 'murmline-tag', text: token.value, attr: { type: 'button' } });
-        tag.onclick = () => { if (!this.hasSelection(tag)) this.handlers.tag(token.value); };
+        tag.onclick = event => {
+          if (event.detail === 0 || !this.hasSelection(tag)) this.handlers.tag(token.value);
+        };
       } else body.createSpan({ text: token.value });
     }
   }
@@ -145,7 +147,9 @@ export class TimelineList {
       const card = item.el.createEl('button', { cls: 'murmline-quote' , attr: { type: 'button' } });
       item.quoteMeta = card.createDiv({ cls: 'murmline-quote-meta', text: this.quoteLabel(quote.id, now) });
       card.createDiv({ cls: 'murmline-quote-text', text: quote.text });
-      card.onclick = () => { if (!this.hasSelection(card)) this.handlers.quote(quote.id); };
+      card.onclick = event => {
+        if (event.detail === 0 || !this.hasSelection(card)) this.handlers.quote(quote.id);
+      };
       item.quote = card;
     } else if (quote.status === 'missing') {
       const card = item.el.createDiv({ cls: 'murmline-quote is-missing' });

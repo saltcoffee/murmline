@@ -64,6 +64,28 @@ it('retries enumeration, follows folder moves, and updates a previously empty vi
   expect(feed.rows.size).toBe(0);
 });
 
+it('clears the search failure for a file updated beyond the current page', async () => {
+  const { feed, data, errors, source } = fixture(51);
+  const repaired = id(2);
+  errors.add(repaired);
+  await feed.search('00000000');
+  expect(feed.searchErrorCount).toBe(1);
+
+  const incoming = id(102);
+  data.add(incoming);
+  await feed.changed(new Set([incoming]));
+  expect(feed.rows.size).toBe(50);
+  expect(feed.rows.has(id(0))).toBe(false);
+
+  errors.delete(repaired);
+  source.readPost.mockClear();
+  await feed.changed(new Set([repaired]));
+  expect(source.readPost).not.toHaveBeenCalledWith(repaired);
+  expect(feed.searchErrorCount).toBe(0);
+  await feed.page();
+  expect(feed.rows.has(repaired)).toBe(true);
+});
+
 it('loads 10,000 records on demand and accepts record 10,001', async () => {
   const { feed, source, data } = fixture(10_000);
   await feed.page();

@@ -330,7 +330,8 @@ export class Feed {
     for (const id of changed) {
       const file = this.store.file(id);
       if (file) this.revisions.set(id, undefined);
-      else { this.revisions.delete(id); this.failed.delete(id); }
+      else this.revisions.delete(id);
+      this.failed.delete(id);
       if (hits.delete(id)) setSortedId(this.visibleIds, id, false);
       setSortedId(this.queue, id, !!file);
     }

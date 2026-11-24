@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.2.4
+
+### English
+
+- Lock quote selection and cancel-quote controls while publishing is in progress so in-flight posts cannot lose retry idempotency or discard newly selected quotes.
+- Clear transient sync/flush errors automatically once subsequent vault updates succeed, and track pagination by search session so switching into or out of search never leaves stale loading states or hides/shows the load-earlier button incorrectly.
+- Clear stale failed-read counts in search when a previously unreadable file is updated, dismiss the delete confirmation modal consistently when a file becomes invalid before trashing, and allow keyboard activation on `#tags` and quote cards even with an active text selection.
+- Refine filename collision detection with `vault.adapter.exists` case-sensitivity checks so unindexed writes keep their attempted path while OS-level case/normalization collisions cleanly advance to a numbered suffix without redundant probes.
+
+### 简体中文
+
+- 发布进行中锁定「引用」与「取消引用」操作，避免请求未返回时破坏重试防重机制或覆盖新选中的引用目标。
+- 目录同步/刷新错误在后续 Vault 更新恢复后自动清除；分页状态按搜索会话隔离，避免在翻页途中进入或退出搜索时残留加载态或误显「加载更早记录」按钮。
+- 搜索态下此前读取失败的文件被修改重新入队后及时清除过期错误计数；删除前最终预检遇到无效记录文件时与刷新流程一致自动关闭弹窗；支持在已有文本选区时通过键盘正常激活 `#标签` 和引用卡片。
+- 改进发布时的文件名冲突判定，结合 `vault.adapter.exists` 大小写敏感检测，确保已落盘但尚未入索引的写入保留原目标路径，同时对系统级大小写/规范化冲突顺延序号且不重复探测。
+
 ## 0.2.3
 
 ### English

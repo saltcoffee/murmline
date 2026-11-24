@@ -41,11 +41,12 @@ export class TimelineView extends ItemView {
   private serial = Promise.resolve();
   private live = false;
   private ready = false;
-  private paging = false;
+  private pageToken?: number;
   private pageFocus?: string | null;
   private saving = false;
   private composing = false;
   private pageError = '';
+  private flushError = '';
   private clock = '';
   private searchTimer?: number;
   private searchLoading = false;
@@ -192,11 +193,17 @@ export class TimelineView extends ItemView {
     }
   }
 
-  private run(task: () => Promise<void>) {
+  private describeLoadError(error: unknown) {
+    return [this.lang.t.loadError, errorDetail(error, this.lang.t)].filter(Boolean).join(' ');
+  }
+
+  private run(task: () => Promise<void>, token?: number) {
     this.serial = this.serial.then(async () => {
       if (!this.live) return;
       try { await task(); }
-      catch (error) { this.pageError = [this.lang.t.loadError, errorDetail(error, this.lang.t)].filter(Boolean).join(' '); }
+      catch (error) {
+        if (token === undefined || token === this.feed.session) this.pageError = this.describeLoadError(error);
+      }
       if (this.live) this.render();
     });
     return this.serial;
@@ -224,24 +231,32 @@ export class TimelineView extends ItemView {
     const paths = this.dirty;
     this.dirty = new Set();
     try { await this.feed.changed(paths, () => this.live); }
-    catch (error) { for (const path of paths) this.dirty.add(path); throw error; }
+    catch (error) {
+      for (const path of paths) this.dirty.add(path);
+      this.flushError = this.describeLoadError(error);
+      return false;
+    }
+    this.flushError = '';
+    return true;
   }
 
   private page(keyboard = false) {
-    if (this.paging || this.searchLoading) return;
     const token = this.feed.session;
-    this.paging = true;
+    if (this.pageToken === token || this.searchLoading) return;
+    this.pageToken = token;
     this.pageError = '';
     this.render();
     void this.run(async () => {
       try {
-        if (this.dirty.size) await this.flush();
-        const first = !this.ready || this.feed.more ? await this.feed.page(() => this.live, token) : undefined;
         if (token !== this.feed.session) return;
-        if (keyboard) this.pageFocus = first ?? [...this.feed.rows.keys()].sort()[0] ?? null;
+        if (this.dirty.size && (!await this.flush() || token !== this.feed.session)) return;
+        const first = !this.ready || this.feed.more ? await this.feed.page(() => this.live, token) : undefined;
         this.ready = true;
-      } finally { this.paging = false; }
-    });
+        if (keyboard && token === this.feed.session) this.pageFocus = first ?? [...this.feed.rows.keys()].sort()[0] ?? null;
+      } finally {
+        if (this.pageToken === token) this.pageToken = undefined;
+      }
+    }, token);
   }
 
   private olderAction(keyboard: boolean) {
@@ -256,34 +271,36 @@ export class TimelineView extends ItemView {
     this.list.render(this.feed.rows, this.clock);
     const { t } = this.lang;
     const searching = this.feed.searching;
-    const loading = this.paging || !this.ready || this.searchLoading;
+    const paging = this.pageToken === this.feed.session;
+    const loading = paging || !this.ready || this.searchLoading;
+    const error = this.pageError || (paging ? '' : this.flushError);
     let message = '';
-    if (this.pageError) message = this.pageError;
+    if (error) message = error;
     else if (!searching) {
       if (loading) message = t.loading;
       else if (!this.feed.rows.size) message = t.empty;
     }
     if (this.status.textContent !== message) this.status.setText(message);
-    this.renderSearch(searching, loading);
-    if (!this.paging) {
-      const hide = this.searchLoading || (!this.pageError && (!this.ready || !this.feed.more));
+    this.renderSearch(searching, loading, error);
+    if (!paging) {
       if (this.pageFocus !== undefined && this.contentEl.ownerDocument.activeElement === this.older) {
         if (this.pageFocus) this.list.focus(this.pageFocus, false);
         else this.focusComposer();
       }
       this.pageFocus = undefined;
-      this.older.hidden = hide;
     }
-    this.older.setAttribute('aria-disabled', String(this.paging));
-    this.older.setText(this.paging ? t.loading : this.pageError ? t.retry : t.earlier);
+    if (this.searchLoading) this.older.hidden = true;
+    else if (!paging) this.older.hidden = !error && (!this.ready || !this.feed.more);
+    this.older.setAttribute('aria-disabled', String(paging));
+    this.older.setText(paging ? t.loading : error ? t.retry : t.earlier);
   }
 
-  private renderSearch(searching: boolean, loading: boolean) {
+  private renderSearch(searching: boolean, loading: boolean, error: string) {
     const { t } = this.lang;
     const hasContent = this.feed.rows.size > 0 || (this.ready && this.feed.more);
     this.searchBar.hidden = !searching && !hasContent;
     let status = '';
-    if (searching && !this.pageError) {
+    if (searching && !error) {
       if (loading) status = t.searching;
       else if (!this.feed.rows.size) status = t.noResults;
     }
@@ -322,7 +339,7 @@ export class TimelineView extends ItemView {
     catch (error) {
       this.searchLoading = false;
       this.searchError = true;
-      this.pageError = [this.lang.t.loadError, errorDetail(error, this.lang.t)].filter(Boolean).join(' ');
+      this.pageError = this.describeLoadError(error);
       this.render();
       return;
     }
@@ -335,7 +352,7 @@ export class TimelineView extends ItemView {
     void this.run(async () => {
       try { await this.feed.page(() => this.live, token); }
       finally { if (this.feed.session === token) this.searchLoading = false; }
-    });
+    }, token);
   }
 
   private toggleTag(value: string) {
@@ -360,11 +377,13 @@ export class TimelineView extends ItemView {
     this.counter.setAttribute('aria-live', over ? 'polite' : 'off');
     this.input.setAttribute('aria-invalid', String(over));
     this.input.readOnly = this.saving;
+    this.quoteBarCancel.disabled = this.saving;
     this.send.disabled = this.saving || !valid;
     this.send.setText(this.saving ? t.posting : t.post);
   }
 
   private startQuote(post: Post) {
+    if (this.saving) return;
     this.quoting = { id: post.id, text: post.text };
     this.pending = undefined;
     this.updateQuoteBar();
@@ -372,6 +391,7 @@ export class TimelineView extends ItemView {
   }
 
   private cancelQuote() {
+    if (this.saving) return;
     this.quoting = undefined;
     this.pending = undefined;
     this.updateQuoteBar();
@@ -496,7 +516,7 @@ export class TimelineView extends ItemView {
   private menu(post: Post, button: HTMLButtonElement) {
     const { t } = this.lang;
     const menu = new Menu();
-    menu.addItem(item => item.setTitle(t.quote).setIcon('quote').onClick(() => this.startQuote(post)));
+    menu.addItem(item => item.setTitle(t.quote).setIcon('quote').setDisabled(this.saving).onClick(() => this.startQuote(post)));
     menu.addItem(item => item.setTitle(t.copyText).setIcon('copy').onClick(() => void this.copyText(post)));
     menu.addItem(item => item.setTitle(t.copyLink).setIcon('link').onClick(() => void this.copyLink(post)));
     menu.addItem(item => item.setTitle(t.openSource).setIcon('file-text').onClick(() => void this.openSource(post)));

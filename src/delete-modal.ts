@@ -93,6 +93,7 @@ export class DeleteModal extends Modal {
       this.close();
     } catch (error) {
       if (revision !== this.revision) return;
+      if (!this.committing && error instanceof PostError) return this.dismissGone();
       this.committing = false;
       this.cancel.disabled = false;
       this.status.setText([this.lang.t.deleteError, errorDetail(error, this.lang.t)].filter(Boolean).join(' '));
