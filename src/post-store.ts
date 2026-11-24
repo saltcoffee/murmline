@@ -89,17 +89,6 @@ export class PostStore {
     return post ? post.text : null;
   }
 
-  private findExisting(path: string) {
-    const exact = this.app.vault.getAbstractFileByPath(path);
-    if (exact) return exact;
-    const slash = path.lastIndexOf('/');
-    if (slash < 0) return null;
-    const parent = this.app.vault.getAbstractFileByPath(path.slice(0, slash));
-    if (!(parent instanceof TFolder)) return null;
-    const target = path.slice(slash + 1).normalize('NFC').toLowerCase();
-    return parent.children.find(child => child.name.normalize('NFC').toLowerCase() === target) ?? null;
-  }
-
   private async ensureFolder(path: string) {
     const vault = this.app.vault;
     if (!vault.getAbstractFileByPath(path)) {
@@ -110,6 +99,7 @@ export class PostStore {
   }
 
   async publish(post: Post) {
+    const vault = this.app.vault;
     const path = postPath(post.id);
     const body = inspect(post.text);
     if (!body.valid) throw new PostError('invalid', path);
@@ -122,21 +112,27 @@ export class PostStore {
     await this.ensureFolder(ROOT);
     await this.ensureFolder(path.slice(0, path.lastIndexOf('/')));
     const baseId = dated ? post.id.slice(0, post.id.indexOf('_') + 1) + slugify(body.text) : post.id;
-    let id = post.id;
-    for (let n = 2; ; id = baseId + ' (' + n++ + ')') {
+    const attemptedId = post.id;
+    for (let n = 1; ; n++) {
+      const id = n === 1 ? attemptedId : baseId + ' (' + n + ')';
+      if (n > 1 && id === attemptedId) continue;
       // Keep the attempted destination if a write succeeds but its acknowledgement fails.
       post.id = id;
       const candidate = postPath(id);
       let file;
-      try { file = await this.app.vault.create(candidate, data); }
+      try { file = await vault.create(candidate, data); }
       catch (error) {
-        const existing = this.findExisting(candidate);
-        if (!existing) throw error;
+        const existing = vault.getAbstractFileByPath(candidate);
+        if (!existing) {
+          // A file written at the exact path may still be waiting for the vault index.
+          const occupied = await vault.adapter.exists(candidate, false);
+          if (!occupied || await vault.adapter.exists(candidate, true)) throw error;
+        }
         if (!(existing instanceof TFile) || existing.path !== candidate) {
           if (dated) continue;
           throw new PostError('occupied', candidate);
         }
-        const raw = await this.app.vault.read(existing);
+        const raw = await vault.read(existing);
         if (raw !== data) {
           if (!dated || this.idAt(existing) === id || raw.startsWith(prefix))
             throw new PostError('occupied', candidate);

@@ -19,6 +19,7 @@ function fixture() {
     return contents.get(file.path)!;
   });
   const vault = {
+    adapter: { exists: vi.fn(async (path: string, _sensitive?: boolean) => files.has(path)) },
     getAbstractFileByPath: (path: string) => files.get(path),
     createFolder: async (path: string) => put(new TFolder(path)),
     create: vi.fn(async (path: string, text: string) => {
@@ -145,21 +146,49 @@ describe('vault boundary', () => {
     expect(store.file(post.id)).toBeNull();
   });
 
-  it('handles case-insensitive filename collisions by advancing to a numbered suffix', async () => {
+  it.each([['Hello', 'hello'], ['Straße', 'STRASSE'], ['ς', 'σ']])('uses a numbered suffix when %s and %s collide', async (original, conflicting) => {
     const { store, vault, files } = fixture();
-    const first = draft('Hello');
+    const first = draft(original);
     await store.publish(first);
-    const baseCreate = vault.create.getMockImplementation()!;
-    vault.create.mockImplementation(async (path, text) => {
-      const lower = path.toLowerCase();
-      if ([...files.keys()].some(existing => existing.toLowerCase() === lower)) throw Error('File already exists');
-      return baseCreate(path, text);
-    });
-    const second = draft('hello');
+    const second = draft(conflicting);
+    const path = postPath(second.id);
+    vault.create.mockRejectedValueOnce(Error('File already exists'));
+    vault.adapter.exists.mockImplementation(async (candidate, sensitive) =>
+      files.has(candidate) || (!sensitive && candidate === path));
     await store.publish(second);
-    expect(postPath(second.id)).toMatch(/_hello \(2\)\.md$/);
+    expect(postPath(second.id)).toBe(path.replace(/\.md$/, ' (2).md'));
     expect(store.list()).toEqual([first.id, second.id]);
-    expect(await store.read(second.id)).toBe('hello');
+    expect(await store.read(second.id)).toBe(conflicting);
+  });
+
+  it('keeps the attempted destination when a written file has not reached the vault index', async () => {
+    const { store, vault, contents } = fixture();
+    const post = draft('unindexed');
+    const path = postPath(post.id);
+    const error = Error('Interrupted after writing');
+    vault.create.mockImplementationOnce(async (candidate, data) => {
+      contents.set(candidate, data);
+      throw error;
+    });
+    vault.adapter.exists.mockImplementation(async candidate => contents.has(candidate));
+
+    await expect(store.publish(post)).rejects.toBe(error);
+    expect(postPath(post.id)).toBe(path);
+    expect([...contents.keys()]).toEqual([path]);
+  });
+
+  it('tries the pending numbered filename only once before choosing another suffix', async () => {
+    const { store, vault } = fixture();
+    const original = draft('collision');
+    original.id += ' (2)';
+    await store.publish(original);
+    const pending = { ...original, id: (Number(original.id.slice(0, 13)) + 1) + original.id.slice(13) };
+    const attempted = postPath(pending.id);
+    vault.create.mockClear();
+
+    await store.publish(pending);
+
+    expect(vault.create.mock.calls.map(([path]) => path)).toEqual([attempted, attempted.replace('(2)', '(3)')]);
   });
 
   it('clears stale cached stamps outside Murmline and treats broken YAML frontmatter as non-post', async () => {

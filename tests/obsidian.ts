@@ -15,6 +15,7 @@ export class Modal {
   close() { this.onClose(); }
   onClose() {}
 }
+export class Notice { constructor(readonly message: string) {} }
 export class Scope { register() {} }
 export class ItemView {
   contentEl = new TestElement(new TestDocument());

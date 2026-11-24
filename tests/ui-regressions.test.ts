@@ -3,7 +3,7 @@ import { afterEach, expect, it, vi } from 'vitest';
 import { DeleteModal } from '../src/delete-modal';
 import { language } from '../src/i18n';
 import { PostError, type PostStore } from '../src/post-store';
-import { postPath } from '../src/post';
+import { postPath, ROOT, type Post } from '../src/post';
 import { TimelineView } from '../src/timeline-view';
 import { TestElement } from './ui-fixture';
 
@@ -85,6 +85,28 @@ it.each(['success', 'failure'])('locks dismissal while trash is pending, then ha
     expect(finished).toHaveBeenCalledWith(false);
   }
   expect(finished).toHaveBeenCalledTimes(1);
+});
+
+it('dismisses the delete dialog when the final preflight finds an invalid post', async () => {
+  const target = {} as TFile;
+  const id = key(start);
+  const preflight = deferred<never>();
+  const store = {
+    file: () => target,
+    readPost: async () => ({ text: 'test' }),
+    remove: () => preflight.promise,
+  };
+  const finished = vi.fn();
+  const modal = new DeleteModal(store as unknown as PostStore, lang, { id, text: 'test' }, target, finished);
+  modal.onOpen();
+  const confirm = modal['confirm'] as unknown as TestElement;
+  await vi.waitFor(() => expect(confirm.disabled).toBe(false));
+
+  const submitting = modal['submit']();
+  preflight.reject(new PostError('invalid', postPath(id)));
+  await submitting;
+
+  expect(finished).toHaveBeenCalledExactlyOnceWith(false);
 });
 
 async function timeline(size: number) {
@@ -219,6 +241,61 @@ it('discards a queued timeline page when a search starts before it runs', async 
   expect(view['feed'].more).toBe(true);
 });
 
+it('clears a recovered vault error and preserves a separate search error', async () => {
+  const { view, store, keys, older } = await timeline(1);
+  const list = vi.spyOn(store, 'list');
+  list.mockImplementationOnce(() => { throw new PostError('occupied', ROOT); });
+  view['change'](ROOT, null);
+  await view['serial'];
+  expect(view['status'].textContent).toContain(lang.t.occupied);
+  expect(older.textContent).toBe(lang.t.retry);
+
+  const newId = key(start + 1);
+  keys.push(newId);
+  view['change'](ROOT, null);
+  await view['serial'];
+  expect(view['feed'].rows.has(newId)).toBe(true);
+  expect(view['status'].textContent).toBe('');
+  expect(older.hidden).toBe(true);
+
+  list.mockImplementationOnce(() => { throw new Error('Search unavailable'); });
+  view['searchInput'].value = 'test';
+  view['applySearch']('test');
+  view['change'](ROOT, null);
+  await view['serial'];
+  expect(view['status'].textContent).toBe(lang.t.loadError);
+  expect(older.textContent).toBe(lang.t.retry);
+});
+
+it('keeps the same pending draft when quote actions are attempted while publishing', async () => {
+  const { view, store, keys } = await timeline(2);
+  const write = deferred<void>();
+  const publish = vi.fn<(post: Post) => Promise<void>>().mockResolvedValue(undefined)
+    .mockImplementationOnce(() => write.promise);
+  Object.assign(store, { publish });
+  const original = { id: keys[0]!, text: 'first' };
+  view['startQuote'](original);
+  view['input'].value = 'reply';
+
+  const publishing = view['publish']();
+  const firstDraft = publish.mock.calls[0]![0];
+  const cancel = view['quoteBarCancel'] as unknown as TestElement;
+  expect(cancel.disabled).toBe(true);
+  cancel.click();
+  view['cancelQuote']();
+  view['startQuote']({ id: keys[1]!, text: 'second' });
+  expect(view['quoting']).toEqual(original);
+  write.reject(new Error('Lost acknowledgement'));
+  await publishing;
+
+  expect(cancel.disabled).toBe(false);
+  expect(view['pending']).toBe(firstDraft);
+  await view['publish']();
+  expect(publish.mock.calls[1]![0]).toBe(firstDraft);
+  expect(firstDraft.quoteId).toBe(original.id);
+  await view['serial'];
+});
+
 it('keeps the newest draft preview through out-of-order reads, invalid markers and moves', async () => {
   const { view, store, keys } = await timeline(1);
   const id = keys[0]!;
@@ -306,6 +383,71 @@ it('hides the earlier button while initial search is loading and preserves searc
   expect(view['feed'].rows.size).toBe(50);
 });
 
+it('hides the earlier button when search starts during timeline paging', async () => {
+  const { view, store, older } = await timeline(120);
+  const gate = deferred<{ text: string }>();
+  store.readPost.mockImplementationOnce(() => gate.promise);
+  older.click();
+  await vi.waitFor(() => expect(store.readPost).toHaveBeenCalledTimes(51));
+  expect(older.hidden).toBe(false);
+
+  view['searchInput'].value = '00000000';
+  view['applySearch']('00000000');
+  const hiddenDuringPaging = older.hidden;
+  gate.resolve({ text: '00000000' });
+  await view['serial'];
+
+  expect(hiddenDuringPaging).toBe(true);
+  expect(view['feed'].rows.size).toBe(50);
+  expect(older.hidden).toBe(false);
+});
+
+it('immediately restores a complete timeline when clearing a paginating search', async () => {
+  const { view, store, older } = await timeline(80);
+  older.click(1);
+  await view['serial'];
+  view['searchInput'].value = '00000000';
+  view['applySearch']('00000000');
+  await view['serial'];
+  const read = deferred<{ text: string }>();
+  store.readPost.mockClear();
+  store.readPost.mockImplementationOnce(() => read.promise);
+  older.click(1);
+  await vi.waitFor(() => expect(store.readPost).toHaveBeenCalledTimes(1));
+
+  (view['searchClear'] as unknown as TestElement).click();
+  const state = { rows: view['feed'].rows.size, status: view['status'].textContent, hidden: older.hidden };
+  read.resolve({ text: '00000000' });
+  await view['serial'];
+
+  expect(state).toEqual({ rows: 80, status: '', hidden: true });
+});
+
+it('keeps a newer page pending when paging from the timeline again after a search', async () => {
+  const { view, store, keys, older } = await timeline(120);
+  const previous = deferred<{ text: string }>();
+  const current = deferred<{ text: string }>();
+  const nextId = keys[19]!;
+  store.readPost.mockImplementation(async id => id === nextId ? current.promise : { text: id });
+  store.readPost.mockImplementationOnce(() => previous.promise);
+  older.click(1);
+  await vi.waitFor(() => expect(store.readPost).toHaveBeenCalledTimes(51));
+  view['searchInput'].value = '00000000';
+  view['applySearch']('00000000');
+  (view['searchClear'] as unknown as TestElement).click();
+  const state = { status: view['status'].textContent, hidden: older.hidden, label: older.textContent };
+  older.click(1);
+  previous.resolve({ text: keys[69]! });
+  expect(state).toEqual({ status: '', hidden: false, label: lang.t.earlier });
+  await vi.waitFor(() => expect(store.readPost).toHaveBeenCalledWith(nextId));
+  expect(older.attributes.get('aria-disabled')).toBe('true');
+  expect(older.textContent).toBe(lang.t.loading);
+  current.resolve({ text: nextId });
+  await view['serial'];
+  expect(view['feed'].rows.size).toBe(120);
+  expect(older.hidden).toBe(true);
+});
+
 it('refreshes quote card timestamps when the clock changes, toggles tags case-insensitively, and resets composing on focusout', async () => {
   vi.stubEnv('TZ', 'UTC');
   const a = key(start);
@@ -326,18 +468,27 @@ it('refreshes quote card timestamps when the clock changes, toggles tags case-in
   view['checkClock']();
   expect(quoteMeta.textContent).toContain('00:05');
 
-  // Toggle tag case-insensitively, and ignore clicks when text inside the tag is actively selected.
-  const tag = root.find(el => el.cls === 'murmline-tag')!;
+  // An active text selection blocks pointer clicks but allows keyboard activation.
   const win = root.ownerDocument.defaultView as unknown as {
     getSelection?: () => { isCollapsed: boolean; toString: () => string; anchorNode: unknown; focusNode: unknown };
   };
+  const card = root.find(el => el.cls === 'murmline-quote')!;
+  const reveal = vi.spyOn(view['list'], 'reveal').mockReturnValue(true);
+  win.getSelection = () => ({ isCollapsed: false, toString: () => 'origin', anchorNode: card, focusNode: card });
+  card.click(1);
+  expect(reveal).not.toHaveBeenCalled();
+  card.click(0);
+  expect(reveal).toHaveBeenCalledExactlyOnceWith(a);
+  reveal.mockRestore();
+
+  const tag = root.find(el => el.cls === 'murmline-tag')!;
   win.getSelection = () => ({ isCollapsed: false, toString: () => '#todo', anchorNode: tag, focusNode: tag });
-  tag.click();
+  tag.click(1);
   expect(view['searchInput'].value).toBe('');
+  tag.click(0);
+  expect(view['searchInput'].value).toBe('#todo');
   win.getSelection = undefined;
   view['toggleTag']('#Todo');
-  expect(view['searchInput'].value).toBe('#Todo');
-  view['toggleTag']('#todo');
   expect(view['searchInput'].value).toBe('');
 
   // Clear stuck composing state on focusout.
